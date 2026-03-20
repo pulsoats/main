@@ -1,0 +1,31 @@
+.env
+.env.*
+
+# Go build artifacts
+bin/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+*.coverprofile
+dist/
+vendor/
+
+# Go module caches (if any local overrides)
+pkg/
+
+# IDE/editor junk
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Logs & misc
+*.log
+tmp/
+*.tmp
