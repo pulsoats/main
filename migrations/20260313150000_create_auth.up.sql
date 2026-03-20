@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS auth.users
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT users_status_check
-        CHECK (status IN ('pending', 'active', 'disabled', 'blocked'))
+        CHECK (status IN ('pending', 'active', 'disabled', 'blocked')),
         CHECK (role IN ('user', 'admin'))
 );
 
