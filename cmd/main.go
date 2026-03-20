@@ -17,7 +17,6 @@ import (
 	appauth "github.com/pulsoats/main/internal/application/auth"
 	appdetectors "github.com/pulsoats/main/internal/application/detectors"
 	appmarket "github.com/pulsoats/main/internal/application/market"
-	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/domain/mailer"
 	"github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
@@ -227,8 +226,4 @@ func createEmailSender(log zerolog.Logger) (mailer.Sender, error) {
 	}
 
 	return aws_ses.NewClient(cfg)
-}
-
-func createAnalysisClient(log zerolog.Logger) (analysis.Client, error) {
-	
 }
