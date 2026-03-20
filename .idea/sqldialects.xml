@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/migrations/20260224123000_create_markets.down.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/migrations/20260224123000_create_markets.up.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/migrations/20260313150000_create_auth.down.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/migrations/20260313150000_create_auth.up.sql" dialect="PostgreSQL" />
+  </component>
+</project>

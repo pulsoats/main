@@ -1,0 +1,408 @@
+openapi: 3.0.3
+info:
+  title: Tradebot Main API
+  version: 1.0.0
+servers:
+  - url: https://api.pulsoats.local
+paths:
+  /auth/register:
+    post:
+      summary: Register new user
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201': {description: Registered}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /auth/login:
+    post:
+      summary: Login user
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/refresh:
+    post:
+      summary: Refresh tokens
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '201':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/password/change:
+    post:
+      summary: Change password
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200': {description: Password changed}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/password/reset/request:
+    post:
+      summary: Request password reset email
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetEmailRequest'
+      responses:
+        '200': {description: Reset email sent}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /auth/password/reset:
+    post:
+      summary: Reset password by token
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200': {description: Password reset}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /auth/admin/invite-token:
+    post:
+      summary: Generate invite token (admin)
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateInviteTokenResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /market/exchanges:
+    get:
+      summary: List exchange metadata
+      tags: [market]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '200':
+          description: Exchange list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListExchangeMetasResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /market/symbols:
+    get:
+      summary: List symbols
+      tags: [market]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: query
+          name: exchange
+          required: true
+          schema: {type: string}
+        - in: query
+          name: category
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Symbols list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSymbolsResponse'
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /detectors:
+    get:
+      summary: List detectors
+      tags: [detectors]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '200':
+          description: Detectors list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDetectorsResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /runs:
+    post:
+      summary: Start analysis run
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRunRequest'
+      responses:
+        '201':
+          description: Run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartRunResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /runs/{run_id}/status:
+    get:
+      summary: Get run status
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Current run status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /runs/{run_id}/meta:
+    get:
+      summary: Get run metadata
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Run metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunMetaResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /runs/{run_id}/result:
+    get:
+      summary: Download run result archive
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: ZIP archive with run result
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InvalidInput:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: invalid_input
+        message:
+          type: string
+          example: Field is required
+    RegisterRequest:
+      type: object
+      required: [email, password, invite_token]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, minLength: 8}
+        invite_token: {type: string}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string}
+    LoginResponse:
+      type: object
+      properties:
+        access_token: {type: string}
+        refresh_token: {type: string}
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: {type: string}
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: {type: string}
+        new_password: {type: string, minLength: 8}
+    PasswordResetEmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email: {type: string, format: email}
+    ResetPasswordRequest:
+      type: object
+      required: [reset_password_token, new_password]
+      properties:
+        reset_password_token: {type: string}
+        new_password: {type: string, minLength: 8}
+    CreateInviteTokenResponse:
+      type: object
+      properties:
+        invite_token: {type: string}
+        invite_link: {type: string}
+    ListExchangeMetasResponse:
+      type: object
+      properties:
+        exchanges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExchangeMeta'
+    ExchangeMeta:
+      type: object
+      properties:
+        code: {type: string}
+        categories: {type: array, items: {type: string}}
+        intervals: {type: array, items: {type: string}}
+        price_types: {type: array, items: {type: string}}
+    ListSymbolsResponse:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items: {type: string}
+    ListDetectorsResponse:
+      type: object
+      properties:
+        detectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectorMeta'
+    DetectorMeta:
+      type: object
+      properties:
+        code: {type: string}
+        description: {type: string}
+        kind: {type: string}
+        opts_schema: {type: object}
+    StartRunRequest:
+      type: object
+      required: [market, interval, from_time, to_time, price_type, detector]
+      properties:
+        market:
+          $ref: '#/components/schemas/MarketSpec'
+        interval: {type: string, example: 1h}
+        from_time: {type: string, format: date-time}
+        to_time: {type: string, format: date-time}
+        price_type: {type: string, example: mark}
+        detector:
+          $ref: '#/components/schemas/DetectorConfig'
+        fees:
+          $ref: '#/components/schemas/Fees'
+    StartRunResponse:
+      type: object
+      properties:
+        run_id: {type: string}
+    MarketSpec:
+      type: object
+      required: [exchange, category, symbol]
+      properties:
+        exchange: {type: string}
+        category: {type: string}
+        symbol: {type: string}
+    DetectorConfig:
+      type: object
+      required: [code]
+      properties:
+        code: {type: string}
+        label: {type: string}
+        opts:
+          type: object
+          additionalProperties: true
+    Fees:
+      type: object
+      properties:
+        taker_fee: {type: number, format: float, example: 0.0005}
+        maker_fee: {type: number, format: float, example: 0.0001}
+    RunStatusResponse:
+      type: object
+      properties:
+        status: {type: string, example: running}
+        message: {type: string}
+    RunMetaResponse:
+      type: object
+      properties:
+        id: {type: string}
+        market:
+          $ref: '#/components/schemas/MarketSpec'
+        interval: {type: string}
+        detector:
+          $ref: '#/components/schemas/DetectorConfig'
+        from_time: {type: string, format: date-time}
+        to_time: {type: string, format: date-time}
+        signals_count: {type: string}
+        avg_profit: {type: number, format: float}
+        created_at: {type: string, format: date-time}
