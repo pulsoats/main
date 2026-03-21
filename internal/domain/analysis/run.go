@@ -50,3 +50,9 @@ func StatusName(code int) string {
 	}
 	return "unknown"
 }
+
+type RunsPage struct {
+	Items        []Run
+	NextBeforeID *int64
+	HasMore      bool
+}

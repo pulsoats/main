@@ -16,12 +16,14 @@ type Client interface {
 	GetRunStatus(ctx context.Context, runID string) (RunStatus, error)
 	GetRunMeta(ctx context.Context, runID string) (Run, error)
 	GetRunResult(ctx context.Context, runID string) (chan []byte, error)
+	ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (RunsPage, error)
 }
 type Service interface {
 	StartRun(ctx context.Context, req StartRunRequest) (string, error)
 	RunStatus(ctx context.Context, runID string) (RunStatus, error)
 	RunMeta(ctx context.Context, runID string) (Run, error)
 	RunResult(ctx context.Context, runID string) (RunResultArchive, error)
+	ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (RunsPage, error)
 }
 
 type StartRunRequest struct {

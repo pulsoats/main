@@ -132,3 +132,33 @@ func (h *Handler) RunResult(c *gin.Context) {
 		return
 	}
 }
+
+func (h *Handler) ListRuns(c *gin.Context) {
+	limit := 20
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed <= 0 {
+			errorx.RespondError(c, fmt.Errorf("%w: limit", derrors.ErrInvalidArgument))
+			return
+		}
+		limit = parsed
+	}
+
+	var beforeID *int64
+	if rawBefore := strings.TrimSpace(c.Query("before_id")); rawBefore != "" {
+		id, err := strconv.ParseInt(rawBefore, 10, 64)
+		if err != nil {
+			errorx.RespondError(c, fmt.Errorf("%w: before_id", derrors.ErrInvalidArgument))
+			return
+		}
+		beforeID = &id
+	}
+
+	page, err := h.service.ListRunsPaged(c.Request.Context(), limit, beforeID)
+	if err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, mapRunsPageToResponse(page))
+}

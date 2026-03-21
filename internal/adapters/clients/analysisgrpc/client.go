@@ -114,6 +114,45 @@ func (c *client) GetRunResult(ctx context.Context, runID string) (chan []byte, e
 	return out, nil
 }
 
+func (c *client) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	req := &analysispb.ListRunsRequest{
+		Limit: int32(limit),
+	}
+	if beforeID != nil {
+		req.BeforeId = *beforeID
+	}
+
+	resp, err := c.conn.ListRunsPaged(ctx, req)
+	if err != nil {
+		return analysis.RunsPage{}, fmt.Errorf("list runs paged: %w", mapGRPCError(err))
+	}
+
+	runs := make([]analysis.Run, 0, len(resp.GetItems()))
+	for _, raw := range resp.GetItems() {
+		meta, err := mapRunMetaResponse(raw)
+		if err != nil {
+			return analysis.RunsPage{}, fmt.Errorf("list runs paged: %w", err)
+		}
+		runs = append(runs, meta)
+	}
+
+	var nextBeforeID *int64
+	if resp.GetNextBeforeId() != 0 {
+		next := resp.GetNextBeforeId()
+		nextBeforeID = &next
+	}
+
+	return analysis.RunsPage{
+		Items:        runs,
+		NextBeforeID: nextBeforeID,
+		HasMore:      resp.GetHasMore(),
+	}, nil
+}
+
 func mapGRPCError(err error) error {
 	if err == nil {
 		return nil

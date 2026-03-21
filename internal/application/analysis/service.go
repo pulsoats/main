@@ -89,3 +89,11 @@ func (s *service) RunResult(ctx context.Context, runID string) (analysis.RunResu
 		Content:  pr,
 	}, nil
 }
+
+func (s *service) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
+	page, err := s.client.ListRunsPaged(ctx, limit, beforeID)
+	if err != nil {
+		return analysis.RunsPage{}, fmt.Errorf("list runs: %w", err)
+	}
+	return page, nil
+}

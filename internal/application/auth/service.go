@@ -26,6 +26,7 @@ type service struct {
 	emailSender mailer.Sender
 	appBaseURL  string
 	appName     string
+	logger      logx.Logger
 }
 
 type ServiceConfig struct {
@@ -35,6 +36,7 @@ type ServiceConfig struct {
 	EmailSender mailer.Sender
 	AppBaseURL  string
 	AppName     string
+	Logger      logx.Logger
 }
 
 func NewService(cfg ServiceConfig) (auth.Service, error) {
@@ -68,6 +70,7 @@ func NewService(cfg ServiceConfig) (auth.Service, error) {
 		emailSender: cfg.EmailSender,
 		appBaseURL:  baseURL,
 		appName:     appName,
+		logger:      cfg.Logger,
 	}, nil
 }
 
@@ -568,6 +571,9 @@ func (s *service) sendVerificationEmail(ctx context.Context, to, token string) e
 	if err := s.emailSender.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send verification email: %w", err)
 	}
+	if s.logger != nil {
+		s.logger.Info("verification email sent", "to", to)
+	}
 	return nil
 }
 
@@ -577,10 +583,13 @@ func (s *service) sendPasswordResetEmail(ctx context.Context, to, token string) 
 	if err := s.emailSender.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send password reset email: %w", err)
 	}
+	if s.logger != nil {
+		s.logger.Info("password reset email sent", "to", to)
+	}
 	return nil
 }
 
 func (s *service) buildTokenLink(path, token string) string {
 	escaped := url.QueryEscape(token)
-	return fmt.Sprintf("%s/%s?token=%s", s.appBaseURL, path, escaped)
+	return fmt.Sprintf("%s/auth/%s?token=%s", s.appBaseURL, path, escaped)
 }

@@ -7,25 +7,25 @@ import (
 )
 
 const (
-	verificationEmailSubject = "[%s] Registration"
-	verificationEmailBody    = `Hi,
+	verificationEmailSubject = "[%s] Подтверждение регистрации"
+	verificationEmailBody    = `Здравствуйте!
 
-Please confirm your email to complete your registration:
-
-%s
-
-If you didn’t create an account, you can safely ignore this email.`
-
-	resetPasswordEmailSubject = "[%s] Password reset"
-	resetPasswordEmailBody    = `Hi,
-
-We received a request to reset your password.
-
-You can set a new password using the link below:
+Подтвердите адрес электронной почты, чтобы завершить регистрацию:
 
 %s
 
-If you didn’t request a password reset, you can safely ignore this email.`
+Если вы не создавали аккаунт, просто проигнорируйте это письмо.`
+
+	resetPasswordEmailSubject = "[%s] Сброс пароля"
+	resetPasswordEmailBody    = `Здравствуйте!
+
+Мы получили запрос на сброс вашего пароля.
+
+Перейдите по ссылке ниже, чтобы установить новый пароль:
+
+%s
+
+Если вы не запрашивали сброс, просто проигнорируйте это письмо.`
 )
 
 // Verification builds a registration confirmation message.

@@ -95,6 +95,7 @@ func main() {
 		EmailSender: emailSender,
 		AppBaseURL:  baseURL,
 		AppName:     appName,
+		Logger:      appLog,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init auth service")

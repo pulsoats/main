@@ -157,6 +157,27 @@ paths:
                 $ref: '#/components/schemas/ListDetectorsResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
   /runs:
+    get:
+      summary: List runs (paged)
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100}
+        - in: query
+          name: before_id
+          required: false
+          schema: {type: integer}
+      responses:
+        '200':
+          description: Runs page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRunsResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
     post:
       summary: Start analysis run
       tags: [analysis]
@@ -406,3 +427,15 @@ components:
         signals_count: {type: string}
         avg_profit: {type: number, format: float}
         created_at: {type: string, format: date-time}
+    ListRunsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunMetaResponse'
+        next_before_id:
+          type: integer
+          nullable: true
+        has_more:
+          type: boolean

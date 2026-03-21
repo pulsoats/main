@@ -83,6 +83,7 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	analysisGroup := r.Group("/runs")
 	analysisGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	analysisGroup.GET("", cfg.AnalysisHandler.ListRuns)
 	analysisGroup.POST("", cfg.AnalysisHandler.StartRun)
 	analysisGroup.GET("/:run_id/status", cfg.AnalysisHandler.RunStatus)
 	analysisGroup.GET("/:run_id/meta", cfg.AnalysisHandler.RunMeta)

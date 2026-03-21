@@ -121,6 +121,8 @@ github.com/pulsoats/contracts v1.0.1/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUW
 github.com/pulsoats/contracts v1.0.2/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
 github.com/pulsoats/contracts v1.0.3 h1:FDkCkMx2/L0Cm/SiA5b2PayMAfKRgDnjo42CYf7raGU=
 github.com/pulsoats/contracts v1.0.3/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
+github.com/pulsoats/contracts v1.1.0 h1:ItGQkI6hCVUPVQ7SWAucuoDuXhXG7iBtqtdJwMRqrlM=
+github.com/pulsoats/contracts v1.1.0/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
 github.com/pulsoats/contracts v1.2.0 h1:E/sOPOOWKUNclHKuMY21NVPVvIbISygYL8bdLVEq13U=
 github.com/pulsoats/contracts v1.2.0/go.mod h1:qIg9XpGXlsCRHb4wJi3wWfyO7in1Pp0i5NROYDIzvag=
 github.com/pulsoats/core v1.0.1 h1:KTiEXiHs9fXx22i/W386+HGEGhsXnW6JJNs09sHu8fM=

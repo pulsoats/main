@@ -130,3 +130,21 @@ func mapToRunMetaResponse(meta analysis.Run) runMetaResponse {
 		CreatedAt:    meta.CreatedAt.Format(time.RFC3339),
 	}
 }
+
+type runListResponse struct {
+	Items        []runMetaResponse `json:"items"`
+	NextBeforeID *int64            `json:"next_before_id,omitempty"`
+	HasMore      bool              `json:"has_more"`
+}
+
+func mapRunsPageToResponse(page analysis.RunsPage) runListResponse {
+	items := make([]runMetaResponse, 0, len(page.Items))
+	for _, item := range page.Items {
+		items = append(items, mapToRunMetaResponse(item))
+	}
+	return runListResponse{
+		Items:        items,
+		NextBeforeID: page.NextBeforeID,
+		HasMore:      page.HasMore,
+	}
+}
