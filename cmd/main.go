@@ -243,9 +243,17 @@ func parseOrigins(raw string) []string {
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		v := strings.TrimSpace(p)
-		if v != "" {
-			out = append(out, v)
+		if v == "" {
+			continue
 		}
+		out = append(out, normalizeOrigin(v))
 	}
 	return out
+}
+
+func normalizeOrigin(origin string) string {
+	if origin == "*" || strings.HasPrefix(origin, "http://") || strings.HasPrefix(origin, "https://") {
+		return origin
+	}
+	return "https://" + origin
 }
