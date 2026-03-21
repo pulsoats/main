@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -15,13 +16,13 @@ import (
 )
 
 type Config struct {
-	AppBaseURL       string
 	AuthHandler      *auth.Handler
 	DetectorsHandler *detectors.Handler
 	MarketHandler    *market.Handler
 	AnalysisHandler  *analysis.Handler
 	JWTSecret        []byte
 	Logger           logx.Logger
+	CORSOrigins      []string
 }
 
 func NewRouter(cfg Config) (*gin.Engine, error) {
@@ -40,13 +41,17 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	if cfg.Logger == nil {
 		return nil, fmt.Errorf("new router: %w: logger", derrors.ErrRequired)
 	}
+	if len(cfg.CORSOrigins) == 0 {
+		return nil, fmt.Errorf("new router: %w: cors origins", derrors.ErrRequired)
+	}
 
 	r := gin.New()
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.AppBaseURL},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowOrigins:     cfg.CORSOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Requested-With"},
 		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
 	}))
 	r.Use(gin.Recovery())
 	r.Use(middleware.LoggerMiddleware(cfg.Logger))

@@ -38,6 +38,7 @@ const (
 	envJWTSecret         = "JWT_SECRET"
 	envRootAdminEmail    = "ROOT_ADMIN_EMAIL"
 	envRootAdminPassword = "ROOT_ADMIN_PASSWORD"
+	envCORSOrigins       = "CORS_ALLOWED_ORIGINS"
 )
 
 const (
@@ -69,6 +70,10 @@ func main() {
 	baseURL := strings.TrimSpace(os.Getenv(envAppBaseURL))
 	if baseURL == "" {
 		zlogger.Fatal().Msg("APP_BASE_URL is required")
+	}
+	corsOrigins := parseOrigins(os.Getenv(envCORSOrigins))
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{baseURL}
 	}
 
 	jwtSecret := strings.TrimSpace(os.Getenv(envJWTSecret))
@@ -153,13 +158,13 @@ func main() {
 	analysisHandler := analysishandler.NewHandler(analysisService)
 
 	httpRouter, err := router.NewRouter(router.Config{
-		AppBaseURL:       baseURL,
 		AuthHandler:      authHandler,
 		DetectorsHandler: detHandler,
 		MarketHandler:    marketHandler,
 		AnalysisHandler:  analysisHandler,
 		JWTSecret:        []byte(jwtSecret),
 		Logger:           appLog,
+		CORSOrigins:      corsOrigins,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init router")
@@ -227,4 +232,20 @@ func createEmailSender(log zerolog.Logger) (mailer.Sender, error) {
 	}
 
 	return aws_ses.NewClient(cfg)
+}
+
+func parseOrigins(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
