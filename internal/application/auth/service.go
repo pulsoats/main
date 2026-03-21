@@ -11,6 +11,7 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/pulsoats/core/domain/derrors"
 	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/domain"
 	"github.com/pulsoats/main/internal/domain/auth"
 	"github.com/pulsoats/main/internal/domain/mailer"
