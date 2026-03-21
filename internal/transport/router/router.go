@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	AppBaseURL       string
 	AuthHandler      *auth.Handler
 	DetectorsHandler *detectors.Handler
 	MarketHandler    *market.Handler
@@ -42,7 +43,7 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	r := gin.New()
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"https://app.pulsoats.local"},
+		AllowOrigins:     []string{cfg.AppBaseURL},
 		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,

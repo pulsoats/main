@@ -153,6 +153,7 @@ func main() {
 	analysisHandler := analysishandler.NewHandler(analysisService)
 
 	httpRouter, err := router.NewRouter(router.Config{
+		AppBaseURL:       baseURL,
 		AuthHandler:      authHandler,
 		DetectorsHandler: detHandler,
 		MarketHandler:    marketHandler,
