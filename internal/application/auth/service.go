@@ -365,6 +365,21 @@ func (s *service) Login(ctx context.Context, input auth.LoginInput) (resp auth.L
 	}, nil
 }
 
+func (s *service) Logout(ctx context.Context, sessionID int64) error {
+	if err := s.repo.RevokeSession(ctx, sessionID); err != nil {
+		return fmt.Errorf("logout: %w", err)
+	}
+
+	return nil
+}
+
+func (s *service) LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error {
+	if err := s.repo.RevokeSessionsByUserExcept(ctx, userID, exceptedSessionID); err != nil {
+		return fmt.Errorf("logout all: %w", err)
+	}
+	return nil
+}
+
 func (s *service) RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error) {
 	tokenHash := hashToken(currentToken)
 

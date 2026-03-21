@@ -132,6 +132,40 @@ func (h *Handler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, loginResponse{AccessToken: resp.AccessToken, RefreshToken: resp.RefreshToken})
 }
 
+func (h *Handler) Logout(c *gin.Context) {
+	sessionID, ok := middleware.GetSessionID(c)
+	if !ok {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	err := h.service.Logout(c.Request.Context(), sessionID)
+	if err != nil {
+		errorx.RespondError(c, err)
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) LogoutAll(c *gin.Context) {
+	sessionID, ok := middleware.GetSessionID(c)
+	if !ok {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+
+	err := h.service.LogoutAll(c.Request.Context(), userID, sessionID)
+	if err != nil {
+		errorx.RespondError(c, err)
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req refreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

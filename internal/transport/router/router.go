@@ -63,6 +63,8 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	protected := public.Group("")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	protected.POST("/logout", cfg.AuthHandler.Logout)
+	protected.POST("/logout-all", cfg.AuthHandler.LogoutAll)
 	protected.POST("/refresh", cfg.AuthHandler.RefreshToken)
 	protected.POST("/password/change", cfg.AuthHandler.ChangePassword)
 	protected.POST("/password/reset/request", cfg.AuthHandler.RequestPasswordReset)

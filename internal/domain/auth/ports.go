@@ -41,6 +41,8 @@ type Service interface {
 	VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error
 
 	Login(ctx context.Context, input LoginInput) (resp LoginResponse, err error)
+	Logout(ctx context.Context, sessionID int64) error
+	LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error
 
 	RefreshToken(ctx context.Context, currentToken string) (LoginResponse, error)
 

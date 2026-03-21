@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Tradebot Main API
+  title: PulsoATS API
   version: 1.0.0
 servers:
-  - url: https://api.pulsoats.local
+  - url: https://api.pulsoats.com
 paths:
   /auth/register:
     post:
@@ -94,6 +94,34 @@ paths:
               $ref: '#/components/schemas/ResetPasswordRequest'
       responses:
         '200': {description: Password reset}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+  /auth/logout:
+    post:
+      summary: Logout current session
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '204': {description: Logged out}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/logout-all:
+    post:
+      summary: Logout all sessions except current
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '204': {description: All sessions revoked}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/verify:
+    get:
+      summary: Verify email by token
+      tags: [auth]
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: {type: string}
+      responses:
+        '204': {description: Email verified}
         '422': {$ref: '#/components/responses/InvalidInput'}
   /auth/admin/invite-token:
     post:
