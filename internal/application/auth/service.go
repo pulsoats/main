@@ -20,7 +20,7 @@ import (
 
 const defaultAppName = "TradeBot"
 
-type service struct {
+type Service struct {
 	repo        auth.Repository
 	txManager   domain.TxManager
 	jwtSecret   []byte
@@ -40,22 +40,22 @@ type ServiceConfig struct {
 	Logger      logx.Logger
 }
 
-func NewService(cfg ServiceConfig) (auth.Service, error) {
+func NewService(cfg ServiceConfig) (*Service, error) {
 	if cfg.Repository == nil {
-		return nil, fmt.Errorf("new auth service: %w: auth repository", derrors.ErrRequired)
+		return nil, fmt.Errorf("new auth Service: %w: auth repository", derrors.ErrRequired)
 	}
 	if cfg.TxManager == nil {
-		return nil, fmt.Errorf("new auth service: %w: tx manager", derrors.ErrRequired)
+		return nil, fmt.Errorf("new auth Service: %w: tx manager", derrors.ErrRequired)
 	}
 	if len(cfg.JWTSecret) == 0 {
-		return nil, fmt.Errorf("new auth service: %w: jwt secret", derrors.ErrRequired)
+		return nil, fmt.Errorf("new auth Service: %w: jwt secret", derrors.ErrRequired)
 	}
 	if cfg.EmailSender == nil {
-		return nil, fmt.Errorf("new auth service: %w: email sender", derrors.ErrRequired)
+		return nil, fmt.Errorf("new auth Service: %w: email sender", derrors.ErrRequired)
 	}
 	baseURL := strings.TrimSpace(cfg.AppBaseURL)
 	if baseURL == "" {
-		return nil, fmt.Errorf("new auth service: %w: app base url", derrors.ErrRequired)
+		return nil, fmt.Errorf("new auth Service: %w: app base url", derrors.ErrRequired)
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -64,7 +64,7 @@ func NewService(cfg ServiceConfig) (auth.Service, error) {
 		appName = defaultAppName
 	}
 
-	return &service{
+	return &Service{
 		repo:        cfg.Repository,
 		txManager:   cfg.TxManager,
 		jwtSecret:   cfg.JWTSecret,
@@ -75,7 +75,7 @@ func NewService(cfg ServiceConfig) (auth.Service, error) {
 	}, nil
 }
 
-func (s *service) InviteToken(ctx context.Context, userID int64) (string, error) {
+func (s *Service) InviteToken(ctx context.Context, userID int64) (string, error) {
 	rawToken, err := generateToken()
 	if err != nil {
 		return "", fmt.Errorf("create invite link: generate token: %w: %v", errorsx.ErrInternal, err)
@@ -94,7 +94,7 @@ func (s *service) InviteToken(ctx context.Context, userID int64) (string, error)
 	return rawToken, nil
 }
 
-func (s *service) Register(ctx context.Context, email, password, inviteToken string) error {
+func (s *Service) Register(ctx context.Context, email, password, inviteToken string) error {
 	if inviteToken == "" {
 		return fmt.Errorf("register: %w", derrors.ErrRequired)
 	}
@@ -162,7 +162,7 @@ func (s *service) Register(ctx context.Context, email, password, inviteToken str
 	return nil
 }
 
-func (s *service) VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error {
+func (s *Service) VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error {
 	tokenHash := hashToken(emailVerificationToken)
 
 	err := s.txManager.WithinTx(ctx, func(txCtx context.Context) error {
@@ -195,7 +195,7 @@ func (s *service) VerifyEmailByToken(ctx context.Context, emailVerificationToken
 	return nil
 }
 
-func (s *service) EnsureRoot(ctx context.Context, email, password string) error {
+func (s *Service) EnsureRoot(ctx context.Context, email, password string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	password = strings.TrimSpace(password)
 	if email == "" || password == "" {
@@ -257,7 +257,7 @@ func (s *service) EnsureRoot(ctx context.Context, email, password string) error 
 	return nil
 }
 
-func (s *service) Login(ctx context.Context, input auth.LoginInput) (resp auth.LoginResponse, err error) {
+func (s *Service) Login(ctx context.Context, input auth.LoginInput) (resp auth.LoginResponse, err error) {
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
 	attempt := auth.LoginAttempt{
@@ -365,7 +365,7 @@ func (s *service) Login(ctx context.Context, input auth.LoginInput) (resp auth.L
 	}, nil
 }
 
-func (s *service) Logout(ctx context.Context, sessionID int64) error {
+func (s *Service) Logout(ctx context.Context, sessionID int64) error {
 	if err := s.repo.RevokeSession(ctx, sessionID); err != nil {
 		return fmt.Errorf("logout: %w", err)
 	}
@@ -373,14 +373,14 @@ func (s *service) Logout(ctx context.Context, sessionID int64) error {
 	return nil
 }
 
-func (s *service) LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error {
+func (s *Service) LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error {
 	if err := s.repo.RevokeSessionsByUserExcept(ctx, userID, exceptedSessionID); err != nil {
 		return fmt.Errorf("logout all: %w", err)
 	}
 	return nil
 }
 
-func (s *service) RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error) {
+func (s *Service) RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error) {
 	tokenHash := hashToken(currentToken)
 
 	var (
@@ -456,7 +456,7 @@ func (s *service) RefreshToken(ctx context.Context, currentToken string) (auth.L
 	}, nil
 }
 
-func (s *service) ChangePassword(ctx context.Context, input auth.ChangePasswordInput) error {
+func (s *Service) ChangePassword(ctx context.Context, input auth.ChangePasswordInput) error {
 	err := s.txManager.WithinTx(ctx, func(txCtx context.Context) error {
 		user, err := s.repo.UserByID(txCtx, input.UserID)
 		if err != nil {
@@ -493,7 +493,7 @@ func (s *service) ChangePassword(ctx context.Context, input auth.ChangePasswordI
 	return nil
 }
 
-func (s *service) RequestPasswordReset(ctx context.Context, email string) error {
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
 	email = strings.TrimSpace(strings.ToLower(email))
 
 	var rawToken string
@@ -539,7 +539,7 @@ func (s *service) RequestPasswordReset(ctx context.Context, email string) error 
 	return nil
 }
 
-func (s *service) ResetPassword(ctx context.Context, resetPasswordToken string, newPassword string) error {
+func (s *Service) ResetPassword(ctx context.Context, resetPasswordToken string, newPassword string) error {
 	tokenHash := hashToken(resetPasswordToken)
 
 	err := s.txManager.WithinTx(ctx, func(txCtx context.Context) error {
@@ -581,7 +581,7 @@ func (s *service) ResetPassword(ctx context.Context, resetPasswordToken string, 
 	return nil
 }
 
-func (s *service) sendVerificationEmail(ctx context.Context, to, token string) error {
+func (s *Service) sendVerificationEmail(ctx context.Context, to, token string) error {
 	link := s.buildTokenLink("verify", token)
 	msg := templates.Verification(to, s.appName, link)
 	if err := s.emailSender.Send(ctx, msg); err != nil {
@@ -593,7 +593,7 @@ func (s *service) sendVerificationEmail(ctx context.Context, to, token string) e
 	return nil
 }
 
-func (s *service) sendPasswordResetEmail(ctx context.Context, to, token string) error {
+func (s *Service) sendPasswordResetEmail(ctx context.Context, to, token string) error {
 	link := s.buildTokenLink("reset-password", token)
 	msg := templates.PasswordReset(to, s.appName, link)
 	if err := s.emailSender.Send(ctx, msg); err != nil {
@@ -605,7 +605,7 @@ func (s *service) sendPasswordResetEmail(ctx context.Context, to, token string) 
 	return nil
 }
 
-func (s *service) buildTokenLink(path, token string) string {
+func (s *Service) buildTokenLink(path, token string) string {
 	escaped := url.QueryEscape(token)
 	return fmt.Sprintf("%s/auth/%s?token=%s", s.appBaseURL, path, escaped)
 }

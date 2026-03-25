@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,14 +16,32 @@ import (
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
+type service interface {
+	InviteToken(ctx context.Context, userID int64) (string, error)
+
+	Register(ctx context.Context, email, password string, inviteToken string) error
+	VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error
+
+	Login(ctx context.Context, input auth.LoginInput) (resp auth.LoginResponse, err error)
+	Logout(ctx context.Context, sessionID int64) error
+	LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error
+
+	RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error)
+
+	ChangePassword(ctx context.Context, input auth.ChangePasswordInput) error
+	RequestPasswordReset(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, resetPasswordToken string, newPassword string) error
+	EnsureRoot(ctx context.Context, email, password string) error
+}
+
 type Handler struct {
-	service auth.Service
+	service service
 	baseURL string
 	logger  logx.Logger
 }
 
 type Config struct {
-	Service auth.Service
+	Service service
 	BaseURL string
 	Logger  logx.Logger
 }
