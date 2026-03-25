@@ -15,7 +15,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/pulsoats/contracts v1.1.0
-	github.com/pulsoats/core v1.0.1
+	github.com/pulsoats/core v1.0.2
 	github.com/rs/zerolog v1.34.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11

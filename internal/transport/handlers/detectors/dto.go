@@ -10,7 +10,7 @@ type detectorMeta struct {
 	Code        string          `json:"code"`
 	Description string          `json:"description"`
 	Kind        string          `json:"kind"`
-	OptsSchema  json.RawMessage `json:"opts_schema" swaggertype:"object"`
+	OptsSchema  json.RawMessage `json:"opts_schema"`
 }
 
 type listDetectorsResponse struct {
