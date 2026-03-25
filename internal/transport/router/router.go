@@ -2,9 +2,7 @@ package router
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/pulsoats/core/domain/derrors"
 	"github.com/pulsoats/core/lib/logx"
@@ -46,13 +44,6 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	}
 
 	r := gin.New()
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.CORSOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Requested-With"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
 	r.Use(gin.Recovery())
 	r.Use(middleware.LoggerMiddleware(cfg.Logger))
 
