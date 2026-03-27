@@ -18,6 +18,7 @@ import (
 	appdetectors "github.com/pulsoats/main/internal/application/detectors"
 	appmarket "github.com/pulsoats/main/internal/application/market"
 	"github.com/pulsoats/main/internal/domain/mailer"
+	tokensvc "github.com/pulsoats/main/internal/infrastructure/auth/token"
 	"github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres/auth"
@@ -80,6 +81,10 @@ func main() {
 	if jwtSecret == "" {
 		zlogger.Fatal().Msg("JWT_SECRET is required")
 	}
+	tokenService, err := tokensvc.NewService([]byte(jwtSecret), 15*time.Minute)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init token service")
+	}
 
 	appName := strings.TrimSpace(os.Getenv(envAppName))
 	authRepository := auth.NewPostgresRepository(qp)
@@ -89,13 +94,13 @@ func main() {
 		zlogger.Fatal().Msg(err.Error())
 	}
 	authService, err := appauth.NewService(appauth.ServiceConfig{
-		Repository:  authRepository,
-		TxManager:   txManager,
-		JWTSecret:   []byte(jwtSecret),
-		EmailSender: emailSender,
-		AppBaseURL:  baseURL,
-		AppName:     appName,
-		Logger:      appLog,
+		Repository:     authRepository,
+		TxManager:      txManager,
+		EmailSender:    emailSender,
+		TokenService:   tokenService,
+		AppFrontendURL: baseURL,
+		AppName:        appName,
+		Logger:         appLog,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init auth service")
@@ -118,7 +123,7 @@ func main() {
 		zlogger.Fatal().Err(err).Msg("sync exchanges in DB")
 	}
 
-	marketService, err := appmarket.NewService(appmarket.ServiceConfig{
+	marketApp, err := appmarket.NewApplication(appmarket.ApplicationConfig{
 		Repository:        marketRepository,
 		TxManager:         txManager,
 		ExchangesRegistry: exRegistry,
@@ -128,7 +133,7 @@ func main() {
 	}
 
 	detRegistry := coredetectors.NewDefaultRegistry()
-	detectorService, err := appdetectors.NewService(appdetectors.ServiceConfig{
+	detectorService, err := appdetectors.NewApplication(appdetectors.ApplicationConfig{
 		DetectorsRegistry: detRegistry,
 	})
 	if err != nil {
@@ -143,18 +148,18 @@ func main() {
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis client")
 	}
-	analysisService := appanalysis.NewService(analysisClient, marketService)
+	analysisService := appanalysis.NewApplication(analysisClient, marketApp)
 
 	authHandler, err := authhandler.NewHandler(authhandler.Config{
-		Service: authService,
-		BaseURL: baseURL,
-		Logger:  appLog,
+		Application: authService,
+		BaseURL:     baseURL,
+		Logger:      appLog,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init auth handler")
 	}
 
-	marketHandler := markethandler.NewHandler(marketService)
+	marketHandler := markethandler.NewHandler(marketApp)
 	detHandler := detectorshandler.NewHandler(detectorService)
 	analysisHandler := analysishandler.NewHandler(analysisService)
 
@@ -163,7 +168,7 @@ func main() {
 		DetectorsHandler: detHandler,
 		MarketHandler:    marketHandler,
 		AnalysisHandler:  analysisHandler,
-		JWTSecret:        []byte(jwtSecret),
+		TokenService:     tokenService,
 		Logger:           appLog,
 		CORSOrigins:      corsOrigins,
 	})
