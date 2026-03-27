@@ -5,31 +5,30 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/pulsoats/core/domain/market"
 	"github.com/pulsoats/main/internal/domain/analysis"
-	"github.com/pulsoats/main/internal/domain/market"
 )
 
-type service struct {
+type marketApp interface {
+	EnsureMarket(ctx context.Context, spec market.Spec) error
+}
+
+type Application struct {
 	client    analysis.Client
-	marketSvc market.Application
+	marketApp marketApp
 }
 
-type ApplicationConfig struct {
-	Client       analysis.Client
-	MarketHelper market.Application
+func NewApplication(client analysis.Client, marketApplication marketApp) *Application {
+	return &Application{client: client, marketApp: marketApplication}
 }
 
-func NewApplication(client analysis.Client, marketApplication market.Application) analysis.Application {
-	return &service{client: client, marketSvc: marketApplication}
-}
-
-func (s *service) StartRun(ctx context.Context, req analysis.StartRunRequest) (string, error) {
+func (s *Application) StartRun(ctx context.Context, req analysis.StartRunRequest) (string, error) {
 	err := req.Validate()
 	if err != nil {
 		return "", fmt.Errorf("start run: %w", err)
 	}
 
-	if err = s.marketSvc.EnsureMarket(ctx, req.Market); err != nil {
+	if err = s.marketApp.EnsureMarket(ctx, req.Market); err != nil {
 		return "", fmt.Errorf("start run: %w", err)
 	}
 
@@ -40,7 +39,7 @@ func (s *service) StartRun(ctx context.Context, req analysis.StartRunRequest) (s
 	return runID, nil
 }
 
-func (s *service) RunStatus(ctx context.Context, runID string) (analysis.RunStatus, error) {
+func (s *Application) RunStatus(ctx context.Context, runID string) (analysis.RunStatus, error) {
 	status, err := s.client.GetRunStatus(ctx, runID)
 	if err != nil {
 		return analysis.RunStatus{}, fmt.Errorf("run status: %w", err)
@@ -48,7 +47,7 @@ func (s *service) RunStatus(ctx context.Context, runID string) (analysis.RunStat
 	return status, nil
 }
 
-func (s *service) RunMeta(ctx context.Context, runID string) (analysis.Run, error) {
+func (s *Application) RunMeta(ctx context.Context, runID string) (analysis.Run, error) {
 	meta, err := s.client.GetRunMeta(ctx, runID)
 	if err != nil {
 		return analysis.Run{}, fmt.Errorf("run meta: %w", err)
@@ -56,7 +55,7 @@ func (s *service) RunMeta(ctx context.Context, runID string) (analysis.Run, erro
 	return meta, nil
 }
 
-func (s *service) RunResult(ctx context.Context, runID string) (analysis.RunResultArchive, error) {
+func (s *Application) RunResult(ctx context.Context, runID string) (analysis.RunResultArchive, error) {
 	stream, err := s.client.GetRunResult(ctx, runID)
 	if err != nil {
 		return analysis.RunResultArchive{}, fmt.Errorf("run result: %w", err)
@@ -90,7 +89,7 @@ func (s *service) RunResult(ctx context.Context, runID string) (analysis.RunResu
 	}, nil
 }
 
-func (s *service) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
+func (s *Application) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
 	page, err := s.client.ListRunsPaged(ctx, limit, beforeID)
 	if err != nil {
 		return analysis.RunsPage{}, fmt.Errorf("list runs: %w", err)

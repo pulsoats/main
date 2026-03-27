@@ -3,27 +3,26 @@ package detectors
 import (
 	"fmt"
 
-	"github.com/pulsoats/core/domain/derrors"
 	"github.com/pulsoats/core/domain/detect"
-	coredetectors "github.com/pulsoats/core/domain/detect/detectors"
-	"github.com/pulsoats/main/internal/domain/detectors"
+	"github.com/pulsoats/core/domain/detect/detectors"
+	"github.com/pulsoats/core/errorsx"
 )
 
-type service struct {
-	reg *coredetectors.Registry
+type Application struct {
+	reg *detectors.Registry
 }
 
 type ApplicationConfig struct {
-	DetectorsRegistry *coredetectors.Registry
+	DetectorsRegistry *detectors.Registry
 }
 
-func NewApplication(cfg ApplicationConfig) (detectors.Application, error) {
+func NewApplication(cfg ApplicationConfig) (*Application, error) {
 	if cfg.DetectorsRegistry == nil {
-		return nil, fmt.Errorf("%w: detectors reg", derrors.ErrRequired)
+		return nil, fmt.Errorf("detectors app: %w", errorsx.ErrInvalidArgument)
 	}
-	return &service{reg: cfg.DetectorsRegistry}, nil
+	return &Application{reg: cfg.DetectorsRegistry}, nil
 }
 
-func (s *service) ListMetas() []detect.DetectorMeta {
+func (s *Application) ListMetas() []detect.DetectorMeta {
 	return s.reg.ListMetas()
 }

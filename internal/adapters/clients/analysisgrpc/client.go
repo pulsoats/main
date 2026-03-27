@@ -2,13 +2,13 @@ package analysisgrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
-	"github.com/pulsoats/core/domain/derrors"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/adapters/clients"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"google.golang.org/grpc"
@@ -23,12 +23,12 @@ type client struct {
 
 func NewClient(addr string) (analysis.Client, error) {
 	if strings.TrimSpace(addr) == "" {
-		return nil, fmt.Errorf("analysis client: %w: grpc address", derrors.ErrRequired)
+		return nil, fmt.Errorf("analysis client: grpc address: %w", errorsx.ErrInvalidArgument)
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("analysis client: %w: %v", errorsx.ErrInternal, err)
+		return nil, fmt.Errorf("analysis client: %w: %v", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return &client{
@@ -60,7 +60,7 @@ func (c *client) GetRunStatus(ctx context.Context, runID string) (analysis.RunSt
 
 	status, ok := clients.MapRunStatusResponse(resp)
 	if !ok {
-		return analysis.RunStatus{}, fmt.Errorf("get run status: %w: resp is nil", derrors.ErrInvalidArgument)
+		return analysis.RunStatus{}, fmt.Errorf("get run status: %w: resp is nil", errorsx.ErrInvalidArgument)
 	}
 	return status, nil
 }
@@ -160,19 +160,19 @@ func mapGRPCError(err error) error {
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return fmt.Errorf("%w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("%w: %v", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	switch st.Code() {
 	case codes.NotFound:
-		return fmt.Errorf("%w: %s", derrors.ErrNotFound, st.Message())
+		return fmt.Errorf("%w: %s", errorsx.ErrNotFound, st.Message())
 	case codes.AlreadyExists, codes.Aborted:
-		return fmt.Errorf("%w: %s", derrors.ErrAlreadyExists, st.Message())
+		return fmt.Errorf("%w: %s", errorsx.ErrAlreadyExists, st.Message())
 	case codes.InvalidArgument, codes.OutOfRange, codes.FailedPrecondition:
-		return fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, st.Message())
+		return fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, st.Message())
 	case codes.Unauthenticated, codes.PermissionDenied:
-		return fmt.Errorf("%w: %s", derrors.ErrUnauthorized, st.Message())
+		return fmt.Errorf("%w: %s", errorsx.ErrUnauthorized, st.Message())
 	default:
-		return fmt.Errorf("%w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("%w: %v", errors.Join(errorsx.ErrInternal, err))
 	}
 }
