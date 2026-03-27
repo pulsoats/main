@@ -7,7 +7,8 @@ servers:
 paths:
   /auth/register:
     post:
-      summary: Register new user
+      summary: Регистрация пользователя
+      description: Создаёт аккаунт по инвайт-токену и отправляет письмо для подтверждения email.
       tags: [auth]
       requestBody:
         required: true
@@ -16,11 +17,14 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
-        '201': {description: Registered}
+        '201': {description: Пользователь зарегистрирован}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /auth/login:
     post:
-      summary: Login user
+      summary: Вход
+      description: Проверяет учётные данные и выдаёт пару access/refresh токенов.
       tags: [auth]
       requestBody:
         required: true
@@ -30,17 +34,19 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Tokens issued
+          description: Токены выданы
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /auth/refresh:
     post:
-      summary: Refresh tokens
+      summary: Обновление токенов
+      description: Обменивает refresh-токен на новую пару access/refresh.
       tags: [auth]
-      security: [ {bearerAuth: []} ]
       requestBody:
         required: true
         content:
@@ -48,16 +54,50 @@ paths:
             schema:
               $ref: '#/components/schemas/RefreshTokenRequest'
       responses:
-        '201':
-          description: Tokens refreshed
+        '200':
+          description: Токены обновлены
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /auth/password/reset/request:
+    post:
+      summary: Запрос сброса пароля
+      description: Отправляет письмо со ссылкой на смену пароля, если указанный email существует.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetEmailRequest'
+      responses:
+        '200': {description: Письмо отправлено}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /auth/password/reset:
+    post:
+      summary: Сброс пароля
+      description: Меняет пароль по токену из письма и отзывает активные сессии.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200': {description: Пароль обновлён}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /auth/password/change:
     post:
-      summary: Change password
+      summary: Смена пароля
+      description: Меняет пароль текущего пользователя и отзывает остальные сессии.
       tags: [auth]
       security: [ {bearerAuth: []} ]
       requestBody:
@@ -67,53 +107,14 @@ paths:
             schema:
               $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
-        '200': {description: Password changed}
+        '200': {description: Пароль изменён}
         '401': {$ref: '#/components/responses/Unauthorized'}
-  /auth/password/reset/request:
-    post:
-      summary: Request password reset email
-      tags: [auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PasswordResetEmailRequest'
-      responses:
-        '200': {description: Reset email sent}
         '422': {$ref: '#/components/responses/InvalidInput'}
-  /auth/password/reset:
-    post:
-      summary: Reset password by token
-      tags: [auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ResetPasswordRequest'
-      responses:
-        '200': {description: Password reset}
-        '422': {$ref: '#/components/responses/InvalidInput'}
-  /auth/logout:
-    post:
-      summary: Logout current session
-      tags: [auth]
-      security: [ {bearerAuth: []} ]
-      responses:
-        '204': {description: Logged out}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-  /auth/logout-all:
-    post:
-      summary: Logout all sessions except current
-      tags: [auth]
-      security: [ {bearerAuth: []} ]
-      responses:
-        '204': {description: All sessions revoked}
-        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /auth/verify:
     get:
-      summary: Verify email by token
+      summary: Подтверждение email
+      description: Подтверждает почту пользователя по токену из письма.
       tags: [auth]
       parameters:
         - in: query
@@ -121,29 +122,90 @@ paths:
           required: true
           schema: {type: string}
       responses:
-        '204': {description: Email verified}
+        '204': {description: Почта подтверждена}
+        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
-  /auth/admin/invite-token:
+        '500': {$ref: '#/components/responses/InternalError'}
+  /auth/logout:
+    delete:
+      summary: Выход из текущей сессии
+      description: Отзывает access/refresh токены активной сессии.
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '204': {description: Выход выполнен}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /auth/logout-all:
+    delete:
+      summary: Выход из всех сессий
+      description: Отзывает все сессии пользователя, кроме текущей.
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '204': {description: Остальные сессии отозваны}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /admin/invite-tokens:
     post:
-      summary: Generate invite token (admin)
+      summary: Создать инвайт-токен
+      description: Админский эндпоинт для генерации разовой ссылки приглашения.
       tags: [auth]
       security: [ {bearerAuth: []} ]
       responses:
         '201':
-          description: Invite created
+          description: Инвайт создан
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateInviteTokenResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
-  /market/exchanges:
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
     get:
-      summary: List exchange metadata
+      summary: Список инвайт-токенов
+      description: Возвращает все токены приглашений и их статус использования (только админ).
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      responses:
+        '200':
+          description: Список инвайтов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InviteToken'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /admin/invite-tokens/{token_id}:
+    delete:
+      summary: Отозвать инвайт-токен
+      description: Удаляет неиспользованный инвайт-токен по идентификатору (только админ).
+      tags: [auth]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: token_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '204': {description: Инвайт отозван}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /market/exchanges/meta:
+    get:
+      summary: Список бирж
+      description: Возвращает поддерживаемые биржи с категориями, интервалами и типами цен.
       tags: [market]
       security: [ {bearerAuth: []} ]
       responses:
         '200':
-          description: Exchange list
+          description: Метаданные бирж
           content:
             application/json:
               schema:
@@ -151,7 +213,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
   /market/symbols:
     get:
-      summary: List symbols
+      summary: Список символов
+      description: Возвращает инструменты для выбранной биржи и категории.
       tags: [market]
       security: [ {bearerAuth: []} ]
       parameters:
@@ -165,20 +228,24 @@ paths:
           schema: {type: string}
       responses:
         '200':
-          description: Symbols list
+          description: Список инструментов
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListSymbolsResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
-  /detectors:
+        '500': {$ref: '#/components/responses/InternalError'}
+  /detectors/meta:
     get:
-      summary: List detectors
+      summary: Список детекторов
+      description: Возвращает метаданные детекторов и схему их настроек.
       tags: [detectors]
       security: [ {bearerAuth: []} ]
       responses:
         '200':
-          description: Detectors list
+          description: Метаданные детекторов
           content:
             application/json:
               schema:
@@ -186,28 +253,30 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
   /runs:
     get:
-      summary: List runs (paged)
+      summary: Список прогонов
+      description: Возвращает постраничный список аналитических прогонов пользователя. Используйте `limit` для размера страницы и `beforeId`, чтобы получить предыдущие страницы (значение передаётся из `nextBeforeId`).
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
         - in: query
           name: limit
-          required: false
           schema: {type: integer, minimum: 1, maximum: 100}
         - in: query
-          name: before_id
-          required: false
+          name: beforeId
           schema: {type: integer}
       responses:
         '200':
-          description: Runs page
+          description: Страница прогонов
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListRunsResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
     post:
-      summary: Start analysis run
+      summary: Запустить прогон
+      description: Стартует новый прогон для указанного рынка и детектора.
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       requestBody:
@@ -218,16 +287,19 @@ paths:
               $ref: '#/components/schemas/StartRunRequest'
       responses:
         '201':
-          description: Run started
+          description: Прогон запущен
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/StartRunResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /runs/{run_id}/status:
     get:
-      summary: Get run status
+      summary: Статус прогона
+      description: Возвращает текущий статус выбранного прогона.
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
@@ -237,16 +309,19 @@ paths:
           schema: {type: string}
       responses:
         '200':
-          description: Current run status
+          description: Текущий статус
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RunStatusResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /runs/{run_id}/meta:
     get:
-      summary: Get run metadata
+      summary: Метаданные прогона
+      description: Возвращает собранные метаданные выбранного прогона.
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
@@ -256,16 +331,19 @@ paths:
           schema: {type: string}
       responses:
         '200':
-          description: Run metadata
+          description: Метаданные прогона
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RunMetaResponse'
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /runs/{run_id}/result:
     get:
-      summary: Download run result archive
+      summary: Загрузить результат прогона
+      description: Отправляет ZIP-архив с результатами выбранного прогона.
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
@@ -275,7 +353,7 @@ paths:
           schema: {type: string}
       responses:
         '200':
-          description: ZIP archive with run result
+          description: ZIP-архив
           content:
             application/zip:
               schema:
@@ -283,6 +361,8 @@ paths:
                 format: binary
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
 components:
   securitySchemes:
     bearerAuth:
@@ -291,40 +371,68 @@ components:
       bearerFormat: JWT
   responses:
     Unauthorized:
-      description: Unauthorized
+      description: Неавторизован
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: unauthorized
+            message: Unauthorized
+    Forbidden:
+      description: Доступ запрещён
     InvalidInput:
-      description: Invalid input
+      description: Некорректный запрос
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: invalid_input
+            message: email is required
     NotFound:
-      description: Resource not found
+      description: Ресурс не найден
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: not_found
+            message: not_found
+    Conflict:
+      description: Конфликт данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: conflict
+            message: already exists
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: internal
+            message: Internal server error
   schemas:
     ErrorResponse:
       type: object
       properties:
-        error:
+        code:
           type: string
-          example: invalid_input
+          enum: [invalid_input, unauthorized, not_found, conflict, internal, bad_request]
         message:
           type: string
-          example: Field is required
     RegisterRequest:
       type: object
-      required: [email, password, invite_token]
+      required: [email, password, inviteToken]
       properties:
         email: {type: string, format: email}
         password: {type: string, minLength: 8}
-        invite_token: {type: string}
+        inviteToken: {type: string}
     LoginRequest:
       type: object
       required: [email, password]
@@ -334,19 +442,19 @@ components:
     LoginResponse:
       type: object
       properties:
-        access_token: {type: string}
-        refresh_token: {type: string}
+        accessToken: {type: string}
+        refreshToken: {type: string}
     RefreshTokenRequest:
       type: object
-      required: [refresh_token]
+      required: [refreshToken]
       properties:
-        refresh_token: {type: string}
+        refreshToken: {type: string}
     ChangePasswordRequest:
       type: object
-      required: [current_password, new_password]
+      required: [currentPassword, newPassword]
       properties:
-        current_password: {type: string}
-        new_password: {type: string, minLength: 8}
+        currentPassword: {type: string}
+        newPassword: {type: string, minLength: 8}
     PasswordResetEmailRequest:
       type: object
       required: [email]
@@ -354,59 +462,60 @@ components:
         email: {type: string, format: email}
     ResetPasswordRequest:
       type: object
-      required: [reset_password_token, new_password]
+      required: [resetPasswordToken, newPassword]
       properties:
-        reset_password_token: {type: string}
-        new_password: {type: string, minLength: 8}
+        resetPasswordToken: {type: string}
+        newPassword: {type: string, minLength: 8}
+    InviteToken:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        createdBy: {type: string, format: uuid}
+        expiresAt: {type: string, format: date-time}
+        usedBy: {type: string, format: uuid, nullable: true}
+        usedAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
     CreateInviteTokenResponse:
       type: object
       properties:
-        invite_token: {type: string}
-        invite_link: {type: string}
+        token:
+          $ref: '#/components/schemas/InviteToken'
+        link: {type: string}
     ListExchangeMetasResponse:
-      type: object
-      properties:
-        exchanges:
-          type: array
-          items:
-            $ref: '#/components/schemas/ExchangeMeta'
+      type: array
+      items:
+        $ref: '#/components/schemas/ExchangeMeta'
     ExchangeMeta:
       type: object
       properties:
         code: {type: string}
         categories: {type: array, items: {type: string}}
         intervals: {type: array, items: {type: string}}
-        price_types: {type: array, items: {type: string}}
+        priceTypes: {type: array, items: {type: string}}
     ListSymbolsResponse:
-      type: object
-      properties:
-        symbols:
-          type: array
-          items: {type: string}
+      type: array
+      items: {type: string}
     ListDetectorsResponse:
-      type: object
-      properties:
-        detectors:
-          type: array
-          items:
-            $ref: '#/components/schemas/DetectorMeta'
+      type: array
+      items:
+        $ref: '#/components/schemas/DetectorMeta'
     DetectorMeta:
       type: object
       properties:
         code: {type: string}
         description: {type: string}
         kind: {type: string}
-        opts_schema: {type: object}
+        optsSchema: {type: object}
     StartRunRequest:
       type: object
-      required: [market, interval, from_time, to_time, price_type, detector]
+      required: [market, interval, fromTime, toTime, priceType, detector]
       properties:
         market:
           $ref: '#/components/schemas/MarketSpec'
         interval: {type: string, example: 1h}
-        from_time: {type: string, format: date-time}
-        to_time: {type: string, format: date-time}
-        price_type: {type: string, example: mark}
+        fromTime: {type: string, format: date-time}
+        toTime: {type: string, format: date-time}
+        priceType: {type: string, example: mark}
         detector:
           $ref: '#/components/schemas/DetectorConfig'
         fees:
@@ -414,7 +523,7 @@ components:
     StartRunResponse:
       type: object
       properties:
-        run_id: {type: string}
+        runId: {type: string}
     MarketSpec:
       type: object
       required: [exchange, category, symbol]
@@ -434,14 +543,14 @@ components:
     Fees:
       type: object
       properties:
-        taker_fee: {type: number, format: float, example: 0.0005}
-        maker_fee: {type: number, format: float, example: 0.0001}
+        takerFee: {type: number, format: float, example: 0.0005}
+        makerFee: {type: number, format: float, example: 0.0001}
     RunStatusResponse:
       type: object
       properties:
         status: {type: string, example: running}
         message: {type: string}
-    RunMetaResponse:
+    RunMeta:
       type: object
       properties:
         id: {type: string}
@@ -450,20 +559,25 @@ components:
         interval: {type: string}
         detector:
           $ref: '#/components/schemas/DetectorConfig'
-        from_time: {type: string, format: date-time}
-        to_time: {type: string, format: date-time}
-        signals_count: {type: string}
-        avg_profit: {type: number, format: float}
-        created_at: {type: string, format: date-time}
+        fromTime: {type: string, format: date-time}
+        toTime: {type: string, format: date-time}
+        signalsCount: {type: string}
+        avgProfit: {type: number, format: float}
+        createdAt: {type: string, format: date-time}
+    RunMetaResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/RunMeta'
     ListRunsResponse:
       type: object
       properties:
-        items:
+        metas:
           type: array
           items:
-            $ref: '#/components/schemas/RunMetaResponse'
-        next_before_id:
+            $ref: '#/components/schemas/RunMeta'
+        nextBeforeId:
           type: integer
           nullable: true
-        has_more:
+        hasMore:
           type: boolean
