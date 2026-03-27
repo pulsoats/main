@@ -1,8 +1,10 @@
 package auth
 
+import "github.com/google/uuid"
+
 type ChangePasswordInput struct {
-	UserID           int64
-	CurrentSessionID int64
+	UserID           uuid.UUID
+	CurrentSessionID uuid.UUID
 	CurrentPassword  string
 	NewPassword      string
 }

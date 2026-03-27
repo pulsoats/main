@@ -1,10 +1,14 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type LoginAttempt struct {
-	ID        int64
-	UserID    *int64
+	ID        uuid.UUID
+	UserID    *uuid.UUID
 	Email     string
 	IPAddress *string
 	UserAgent *string

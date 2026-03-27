@@ -1,12 +1,17 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type InviteToken struct {
-	ID        int64
+	ID        uuid.UUID
 	TokenHash string
-	CreatedBy int64
+	CreatedBy uuid.UUID
 	ExpiresAt time.Time
+	UsedBy    *uuid.UUID
 	UsedAt    *time.Time
 	CreatedAt time.Time
 }

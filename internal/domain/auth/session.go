@@ -1,15 +1,19 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Session struct {
-	ID               int64
-	UserID           int64
+	ID               uuid.UUID
+	UserID           uuid.UUID
 	RefreshTokenHash string
 	UserAgent        *string
 	IPAddress        *string
 	ExpiresAt        time.Time
 	RevokedAt        *time.Time
-	ReplacedByID     *int64
+	ReplacedByID     *uuid.UUID
 	CreatedAt        time.Time
 }

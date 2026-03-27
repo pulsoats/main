@@ -1,10 +1,14 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type EmailVerificationToken struct {
-	ID        int64
-	UserID    int64
+	ID        uuid.UUID
+	UserID    uuid.UUID
 	TokenHash string
 	ExpiresAt time.Time
 	UsedAt    *time.Time
@@ -12,10 +16,16 @@ type EmailVerificationToken struct {
 }
 
 type PasswordResetToken struct {
-	ID        int64
-	UserID    int64
+	ID        uuid.UUID
+	UserID    uuid.UUID
 	TokenHash string
 	ExpiresAt time.Time
 	UsedAt    *time.Time
 	CreatedAt time.Time
+}
+
+type AccessTokenClaims struct {
+	UserID    uuid.UUID
+	SessionID uuid.UUID
+	Role      UserRole
 }
