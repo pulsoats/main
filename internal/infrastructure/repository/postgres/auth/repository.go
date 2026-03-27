@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/pulsoats/core/domain/derrors"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/auth"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 )
@@ -23,21 +23,21 @@ func NewPostgresRepository(qp postgres.QuerierProvider) auth.Repository {
 
 func (r *repo) CreateInviteToken(ctx context.Context, token auth.InviteToken) error {
 	const query = `
-	INSERT INTO auth.invite_tokens (token_hash, created_by, expires_at)
-	VALUES ($1, $2, $3);
+	INSERT INTO auth.invite_tokens (id, token_hash, created_by, expires_at)
+	VALUES ($1, $2, $3, $4);
 	`
 
 	q := r.qp.Get(ctx)
 
-	_, err := q.Exec(ctx, query, token.TokenHash, token.CreatedBy, token.ExpiresAt)
+	_, err := q.Exec(ctx, query, token.ID, token.TokenHash, token.CreatedBy, token.ExpiresAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return fmt.Errorf("create invite token: %w", derrors.ErrNotFound)
+			return fmt.Errorf("create invite token: %w", errorsx.ErrNotFound)
 		}
 
-		return fmt.Errorf("create invite token: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create invite token: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
@@ -45,7 +45,7 @@ func (r *repo) CreateInviteToken(ctx context.Context, token auth.InviteToken) er
 
 func (r *repo) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.InviteToken, error) {
 	const query = `
-	SELECT id, token_hash, created_by, expires_at, used_at, created_at
+	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
 	FROM auth.invite_tokens
 	WHERE token_hash = $1;
 	`
@@ -57,42 +57,98 @@ func (r *repo) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.In
 		&token.TokenHash,
 		&token.CreatedBy,
 		&token.ExpiresAt,
+		&token.UsedBy,
 		&token.UsedAt,
 		&token.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w", derrors.ErrNotFound)
+			return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w", errorsx.ErrNotFound)
 		}
-		return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w: %v", errorsx.ErrInternal, err)
+		return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return token, nil
 }
 
-func (r *repo) MarkInviteTokenUsed(ctx context.Context, id int64) error {
+func (r *repo) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, error) {
+	const query = `
+	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
+	FROM auth.invite_tokens
+	ORDER BY created_at DESC;
+	`
+
+	q := r.qp.Get(ctx)
+
+	rows, err := q.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list invite tokens: %w", errors.Join(errorsx.ErrInternal, err))
+	}
+	defer rows.Close()
+
+	tokens, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (auth.InviteToken, error) {
+		var token auth.InviteToken
+		err := row.Scan(
+			&token.ID,
+			&token.TokenHash,
+			&token.CreatedBy,
+			&token.ExpiresAt,
+			&token.UsedBy,
+			&token.UsedAt,
+			&token.CreatedAt,
+		)
+		if err != nil {
+			return auth.InviteToken{}, fmt.Errorf("list invite tokens: %w", errors.Join(errorsx.ErrInternal, err))
+		}
+		return token, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
+}
+
+func (r *repo) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.invite_tokens
-	SET used_at = now()
+	SET used_by = $2,
+	    used_at = now()
 	WHERE id = $1;
 	`
 
 	q := r.qp.Get(ctx)
 
-	tag, err := q.Exec(ctx, query, id)
+	tag, err := q.Exec(ctx, query, id, userID)
 	if err != nil {
-		return fmt.Errorf("mark invite token used: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("mark invite token used: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("mark invite token used: %w", derrors.ErrNotFound)
+		return fmt.Errorf("mark invite token used: %w", errorsx.ErrNotFound)
+	}
+	return nil
+}
+
+func (r *repo) RevokeInviteToken(ctx context.Context, id uuid.UUID) error {
+	const query = `
+	DELETE FROM auth.invite_tokens
+	WHERE id = $1 AND used_by IS NULL AND used_at IS NULL;
+	`
+
+	q := r.qp.Get(ctx)
+	tag, err := q.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("revoke invite token: %w", errors.Join(errorsx.ErrInternal, err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("revoke invite token: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
 func (r *repo) CreateUser(ctx context.Context, user *auth.User) error {
 	const query = `
-	INSERT INTO auth.users (email, password_hash, role, status)
-	VALUES ($1, $2, $3, 'pending')
-	RETURNING id;
+	INSERT INTO auth.users (id, email, password_hash, role)
+	VALUES ($1, $2, $3, $4);
 	`
 
 	q := r.qp.Get(ctx)
@@ -102,19 +158,19 @@ func (r *repo) CreateUser(ctx context.Context, user *auth.User) error {
 		role = auth.RoleUser
 	}
 
-	err := q.QueryRow(ctx, query, user.Email, user.PasswordHash, role).Scan(&user.ID)
+	_, err := q.Exec(ctx, query, user.ID, user.Email, user.PasswordHash, role)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return fmt.Errorf("create user: %w", derrors.ErrAlreadyExists)
+			return fmt.Errorf("create user: %w", errorsx.ErrAlreadyExists)
 		}
-		return fmt.Errorf("create user: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create user: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
 }
 
-func (r *repo) UserByID(ctx context.Context, id int64) (auth.User, error) {
+func (r *repo) UserByID(ctx context.Context, id uuid.UUID) (auth.User, error) {
 	const query = `
 	SELECT id, email, password_hash, role, email_verified_at, status, locked_until, created_at, updated_at
 	FROM auth.users
@@ -124,11 +180,12 @@ func (r *repo) UserByID(ctx context.Context, id int64) (auth.User, error) {
 	q := r.qp.Get(ctx)
 	u := auth.User{}
 
+	var rawRole string
 	err := q.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PasswordHash,
-		&u.Role,
+		&rawRole,
 		&u.EmailVerifiedAt,
 		&u.Status,
 		&u.LockedUntil,
@@ -137,10 +194,16 @@ func (r *repo) UserByID(ctx context.Context, id int64) (auth.User, error) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.User{}, fmt.Errorf("user by id: %w", derrors.ErrNotFound)
+			return auth.User{}, fmt.Errorf("user by id: %w", errorsx.ErrNotFound)
 		}
-		return auth.User{}, fmt.Errorf("user by id: %w: %v", errorsx.ErrInternal, err)
+		return auth.User{}, fmt.Errorf("user by id: %w", errors.Join(errorsx.ErrInternal, err))
 	}
+
+	role, err := auth.ParseUserRole(rawRole)
+	if err != nil {
+		return auth.User{}, fmt.Errorf("user by id: %w", err)
+	}
+	u.Role = role
 
 	return u, nil
 }
@@ -155,11 +218,12 @@ func (r *repo) UserByEmail(ctx context.Context, email string) (auth.User, error)
 	q := r.qp.Get(ctx)
 	u := auth.User{}
 
+	var rawRole string
 	err := q.QueryRow(ctx, query, email).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PasswordHash,
-		&u.Role,
+		&rawRole,
 		&u.EmailVerifiedAt,
 		&u.Status,
 		&u.LockedUntil,
@@ -168,15 +232,21 @@ func (r *repo) UserByEmail(ctx context.Context, email string) (auth.User, error)
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.User{}, fmt.Errorf("user by email: %w", derrors.ErrNotFound)
+			return auth.User{}, fmt.Errorf("user by email: %w", errorsx.ErrNotFound)
 		}
-		return auth.User{}, fmt.Errorf("user by email", err)
+		return auth.User{}, fmt.Errorf("user by email: %w", errors.Join(errorsx.ErrInternal, err))
 	}
+
+	role, err := auth.ParseUserRole(rawRole)
+	if err != nil {
+		return auth.User{}, fmt.Errorf("user by email: %w", err)
+	}
+	u.Role = role
 
 	return u, nil
 }
 
-func (r *repo) ChangePassword(ctx context.Context, userID int64, passwordHash string) error {
+func (r *repo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
 	const query = `
 	UPDATE auth.users
 	SET password_hash = $2
@@ -187,15 +257,15 @@ func (r *repo) ChangePassword(ctx context.Context, userID int64, passwordHash st
 
 	tag, err := q.Exec(ctx, query, userID, passwordHash)
 	if err != nil {
-		return fmt.Errorf("change password: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("change password: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("change password: %w", derrors.ErrNotFound)
+		return fmt.Errorf("change password: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
-func (r *repo) SetUserRole(ctx context.Context, userID int64, role auth.Role) error {
+func (r *repo) SetUserRole(ctx context.Context, userID uuid.UUID, role auth.UserRole) error {
 	const query = `
 	UPDATE auth.users
 	SET role = $2
@@ -205,31 +275,31 @@ func (r *repo) SetUserRole(ctx context.Context, userID int64, role auth.Role) er
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, userID, role)
 	if err != nil {
-		return fmt.Errorf("set user role: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("set user role: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("set user role: %w", derrors.ErrNotFound)
+		return fmt.Errorf("set user role: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
 func (r *repo) CreatePasswordResetToken(ctx context.Context, token *auth.PasswordResetToken) error {
 	const query = `
-	INSERT INTO auth.password_reset_tokens (user_id, token_hash, expires_at)
-	VALUES ($1, $2, $3)
-	RETURNING id, created_at;
+	INSERT INTO auth.password_reset_tokens (id, user_id, token_hash, expires_at)
+	VALUES ($1, $2, $3, $4)
+	RETURNING created_at;
 	`
 
 	q := r.qp.Get(ctx)
 
-	err := q.QueryRow(ctx, query, token.UserID, token.TokenHash, token.ExpiresAt).
-		Scan(&token.ID, &token.CreatedAt)
+	err := q.QueryRow(ctx, query, token.ID, token.UserID, token.TokenHash, token.ExpiresAt).
+		Scan(&token.CreatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return fmt.Errorf("create password reset token: %w", derrors.ErrNotFound)
+			return fmt.Errorf("create password reset token: %w", errorsx.ErrNotFound)
 		}
-		return fmt.Errorf("create password reset token: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create password reset token: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
@@ -255,15 +325,15 @@ func (r *repo) PasswordResetTokenByHash(ctx context.Context, tokenHash string) (
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.PasswordResetToken{}, fmt.Errorf("password reset token by hash: %w", derrors.ErrNotFound)
+			return auth.PasswordResetToken{}, fmt.Errorf("password reset token by hash: %w", errorsx.ErrNotFound)
 		}
-		return auth.PasswordResetToken{}, fmt.Errorf("password reset token by hash: %w: %v", errorsx.ErrInternal, err)
+		return auth.PasswordResetToken{}, fmt.Errorf("password reset token by hash: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return token, nil
 }
 
-func (r *repo) MarkPasswordResetTokenUsed(ctx context.Context, id int64) error {
+func (r *repo) MarkPasswordResetTokenUsed(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.password_reset_tokens
 	SET used_at = now()
@@ -273,19 +343,19 @@ func (r *repo) MarkPasswordResetTokenUsed(ctx context.Context, id int64) error {
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("mark password reset token used: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("mark password reset token used: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("mark password reset token used: %w", derrors.ErrNotFound)
+		return fmt.Errorf("mark password reset token used: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
 func (r *repo) CreateSession(ctx context.Context, session *auth.Session) error {
 	const query = `
-	INSERT INTO auth.user_sessions (user_id, refresh_token_hash, user_agent, ip_address, expires_at)
-	VALUES ($1, $2, $3, $4, $5)
-	RETURNING id;
+	INSERT INTO auth.user_sessions (id, user_id, refresh_token_hash, user_agent, ip_address, expires_at)
+	VALUES ($1, $2, $3, $4, $5, $6)
+	RETURNING created_at;
 	`
 
 	q := r.qp.Get(ctx)
@@ -293,14 +363,15 @@ func (r *repo) CreateSession(ctx context.Context, session *auth.Session) error {
 	err := q.QueryRow(
 		ctx,
 		query,
+		session.ID,
 		session.UserID,
 		session.RefreshTokenHash,
 		session.UserAgent,
 		session.IPAddress,
 		session.ExpiresAt,
-	).Scan(&session.ID)
+	).Scan(&session.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("create session: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create session: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
@@ -328,15 +399,55 @@ func (r *repo) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash s
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.Session{}, fmt.Errorf("session by refresh token hash: %w", derrors.ErrNotFound)
+			return auth.Session{}, fmt.Errorf("session by refresh token hash: %w", errorsx.ErrNotFound)
 		}
-		return auth.Session{}, fmt.Errorf("session by refresh token hash: %w: %v", errorsx.ErrInternal, err)
+		return auth.Session{}, fmt.Errorf("session by refresh token hash: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return s, nil
 }
 
-func (r *repo) RevokeSession(ctx context.Context, id int64) error {
+func (r *repo) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
+	const query = `
+	SELECT id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked_at, created_at
+	FROM auth.user_sessions
+	WHERE user_id = $1
+	AND revoked_at IS NULL
+	AND expires_at > NOW();
+	`
+
+	q := r.qp.Get(ctx)
+
+	rows, err := q.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list active sessions by user id: %w", errors.Join(errorsx.ErrInternal, err))
+	}
+	defer rows.Close()
+
+	sessions, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (auth.Session, error) {
+		var s auth.Session
+		if err := r.Scan(
+			&s.ID,
+			&s.UserID,
+			&s.RefreshTokenHash,
+			&s.UserAgent,
+			&s.IPAddress,
+			&s.ExpiresAt,
+			&s.RevokedAt,
+			&s.CreatedAt,
+		); err != nil {
+			return auth.Session{}, fmt.Errorf("list active sessions by user id: %w", errors.Join(errorsx.ErrInternal, err))
+		}
+
+		return s, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
+func (r *repo) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -347,15 +458,15 @@ func (r *repo) RevokeSession(ctx context.Context, id int64) error {
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("revoke session: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("revoke session: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("revoke session: %w", derrors.ErrNotFound)
+		return fmt.Errorf("revoke session: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
-func (r *repo) RevokeSessionsByUser(ctx context.Context, userID int64) error {
+func (r *repo) RevokeSessionsByUser(ctx context.Context, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -366,12 +477,12 @@ func (r *repo) RevokeSessionsByUser(ctx context.Context, userID int64) error {
 	q := r.qp.Get(ctx)
 	_, err := q.Exec(ctx, query, userID)
 	if err != nil {
-		return fmt.Errorf("revoke sessions by user: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("revoke sessions by user: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }
 
-func (r *repo) RevokeSessionsByUserExcept(ctx context.Context, userID int64, exceptedSessionID int64) error {
+func (r *repo) RevokeSessionsByUserExcept(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -383,27 +494,27 @@ func (r *repo) RevokeSessionsByUserExcept(ctx context.Context, userID int64, exc
 	q := r.qp.Get(ctx)
 	_, err := q.Exec(ctx, query, userID, exceptedSessionID)
 	if err != nil {
-		return fmt.Errorf("revoke sessions by user except: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("revoke sessions by user except: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }
 
 func (r *repo) CreateEmailVerificationToken(ctx context.Context, token *auth.EmailVerificationToken) error {
 	const query = `
-	INSERT INTO auth.email_verification_tokens (user_id, token_hash, expires_at)
-	VALUES ($1, $2, $3)
-	RETURNING id, created_at;
+	INSERT INTO auth.email_verification_tokens (id, user_id, token_hash, expires_at)
+	VALUES ($1, $2, $3, $4)
+	RETURNING created_at;
 	`
 
 	q := r.qp.Get(ctx)
-	err := q.QueryRow(ctx, query, token.UserID, token.TokenHash, token.ExpiresAt).
-		Scan(&token.ID, &token.CreatedAt)
+	err := q.QueryRow(ctx, query, token.ID, token.UserID, token.TokenHash, token.ExpiresAt).
+		Scan(&token.CreatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return fmt.Errorf("create email verification token: %w", derrors.ErrNotFound)
+			return fmt.Errorf("create email verification token: %w", errorsx.ErrNotFound)
 		}
-		return fmt.Errorf("create email verification token: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create email verification token: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }
@@ -428,15 +539,15 @@ func (r *repo) EmailVerificationTokenByHash(ctx context.Context, tokenHash strin
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.EmailVerificationToken{}, fmt.Errorf("email verification token by hash: %w", derrors.ErrNotFound)
+			return auth.EmailVerificationToken{}, fmt.Errorf("email verification token by hash: %w", errorsx.ErrNotFound)
 		}
-		return auth.EmailVerificationToken{}, fmt.Errorf("email verification token by hash: %w: %v", errorsx.ErrInternal, err)
+		return auth.EmailVerificationToken{}, fmt.Errorf("email verification token by hash: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return t, nil
 }
 
-func (r *repo) MarkEmailVerificationTokenUsed(ctx context.Context, id int64) error {
+func (r *repo) MarkEmailVerificationTokenUsed(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.email_verification_tokens
 	SET used_at = now()
@@ -446,18 +557,18 @@ func (r *repo) MarkEmailVerificationTokenUsed(ctx context.Context, id int64) err
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("mark email verification token used: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("mark email verification token used: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("mark email verification token used: %w", derrors.ErrNotFound)
+		return fmt.Errorf("mark email verification token used: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
-func (r *repo) MarkUserEmailVerified(ctx context.Context, userID int64) error {
+func (r *repo) MarkUserEmailVerified(ctx context.Context, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.users
-	SET email_verified_at = now(),
+	SET email_verified_at = NOW(),
 	    status = 'active'
 	WHERE id = $1;
 	`
@@ -465,24 +576,25 @@ func (r *repo) MarkUserEmailVerified(ctx context.Context, userID int64) error {
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, userID)
 	if err != nil {
-		return fmt.Errorf("mark user email verified: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("mark user email verified: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("mark user email verified: %w", derrors.ErrNotFound)
+		return fmt.Errorf("mark user email verified: %w", errorsx.ErrNotFound)
 	}
 	return nil
 }
 
 func (r *repo) CreateLoginAttempt(ctx context.Context, attempt auth.LoginAttempt) error {
 	const query = `
-	INSERT INTO auth.login_attempts (user_id, email, ip_address, user_agent, success, reason)
-	VALUES ($1, $2, $3, $4, $5, $6);
+	INSERT INTO auth.login_attempts (id, user_id, email, ip_address, user_agent, success, reason)
+	VALUES ($1, $2, $3, $4, $5, $6, $7);
 	`
 
 	q := r.qp.Get(ctx)
 	_, err := q.Exec(
 		ctx,
 		query,
+		attempt.ID,
 		attempt.UserID,
 		attempt.Email,
 		attempt.IPAddress,
@@ -493,9 +605,9 @@ func (r *repo) CreateLoginAttempt(ctx context.Context, attempt auth.LoginAttempt
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return fmt.Errorf("create login attempt: %w", derrors.ErrNotFound)
+			return fmt.Errorf("create login attempt: %w", errorsx.ErrNotFound)
 		}
-		return fmt.Errorf("create login attempt: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create login attempt: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }

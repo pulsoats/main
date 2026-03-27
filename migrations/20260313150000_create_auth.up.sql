@@ -2,8 +2,8 @@ CREATE SCHEMA IF NOT EXISTS auth;
 
 CREATE TABLE IF NOT EXISTS auth.users
 (
-    id                 BIGSERIAL PRIMARY KEY,
-    email              TEXT        NOT NULL,
+    id                 UUID PRIMARY KEY,
+    email              TEXT        NOT NULL UNIQUE,
     password_hash      TEXT        NOT NULL,
     role               TEXT        NOT NULL DEFAULT 'user',
     status             TEXT        NOT NULL DEFAULT 'pending',
@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS auth.users
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT users_status_check
-        CHECK (status IN ('pending', 'active', 'disabled', 'blocked')),
-        CHECK (role IN ('user', 'admin'))
+        CHECK (status IN ('pending', 'active', 'disabled')),
+    CHECK (role IN ('user', 'admin'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx
@@ -28,14 +28,14 @@ CREATE INDEX IF NOT EXISTS users_status_idx
 
 CREATE TABLE IF NOT EXISTS auth.user_sessions
 (
-    id                 BIGSERIAL PRIMARY KEY,
-    user_id            BIGINT      NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+    id                 UUID PRIMARY KEY,
+    user_id            UUID        NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
     refresh_token_hash TEXT        NOT NULL UNIQUE,
     user_agent         TEXT        NULL,
     ip_address         INET        NULL,
     expires_at         TIMESTAMPTZ NOT NULL,
     revoked_at         TIMESTAMPTZ NULL,
-    replaced_by_id     BIGINT      NULL REFERENCES auth.user_sessions (id) ON DELETE SET NULL,
+    replaced_by_id     UUID        NULL REFERENCES auth.user_sessions (id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT user_sessions_expires_after_created_check
@@ -51,11 +51,13 @@ CREATE INDEX IF NOT EXISTS user_sessions_expires_at_idx
 CREATE INDEX IF NOT EXISTS user_sessions_revoked_at_idx
     ON auth.user_sessions (revoked_at);
 
+CREATE INDEX ON auth.user_sessions (replaced_by_id);
+
 
 CREATE TABLE IF NOT EXISTS auth.email_verification_tokens
 (
-    id         BIGSERIAL PRIMARY KEY,
-    user_id    BIGINT      NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+    id         UUID PRIMARY KEY,
+    user_id    UUID        NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
     token_hash TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at    TIMESTAMPTZ NULL,
@@ -74,8 +76,8 @@ CREATE INDEX IF NOT EXISTS email_verification_tokens_expires_at_idx
 
 CREATE TABLE IF NOT EXISTS auth.password_reset_tokens
 (
-    id         BIGSERIAL PRIMARY KEY,
-    user_id    BIGINT      NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+    id         UUID PRIMARY KEY,
+    user_id    UUID        NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
     token_hash TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at    TIMESTAMPTZ NULL,
@@ -93,8 +95,8 @@ CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_at_idx
 
 CREATE TABLE IF NOT EXISTS auth.login_attempts
 (
-    id         BIGSERIAL PRIMARY KEY,
-    user_id    BIGINT      NULL REFERENCES auth.users (id) ON DELETE SET NULL,
+    id         UUID PRIMARY KEY,
+    user_id    UUID        NULL REFERENCES auth.users (id) ON DELETE SET NULL,
     email      TEXT        NOT NULL,
     ip_address INET        NULL,
     user_agent TEXT        NULL,
@@ -111,16 +113,14 @@ CREATE INDEX login_attempts_created_at_idx
 
 CREATE TABLE IF NOT EXISTS auth.invite_tokens
 (
-    id         BIGSERIAL PRIMARY KEY,
+    id         UUID PRIMARY KEY,
     token_hash TEXT        NOT NULL UNIQUE,
-    created_by BIGINT REFERENCES auth.users (id),
+    created_by UUID REFERENCES auth.users (id),
     expires_at TIMESTAMPTZ NOT NULL,
+    used_by    UUID        NULL,
     used_at    TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT invite_tokens_expires_after_created_check
         CHECK (expires_at > created_at)
 );
-
-CREATE INDEX invite_tokens_token_hash_idx
-    ON auth.invite_tokens (token_hash);

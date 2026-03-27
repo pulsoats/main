@@ -2,10 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 
 	"github.com/pulsoats/main/internal/domain"
 )
@@ -23,14 +24,18 @@ type txKey struct{}
 func (m *txManager) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("within tx: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("within tx: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	defer tx.Rollback(ctx)
 
 	ctx = context.WithValue(ctx, txKey{}, tx)
 
 	if err := fn(ctx); err != nil {
-		return fmt.Errorf("within tx: %w: %v", errorsx.ErrInternal, err)
+		return err
 	}
-	return tx.Commit(ctx)
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("within tx: %w", errors.Join(errorsx.ErrInternal, err))
+	}
+	return nil
 }

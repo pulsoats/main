@@ -19,14 +19,14 @@ type service struct {
 	exToAPI    map[string]exchange.API
 }
 
-type ServiceConfig struct {
+type ApplicationConfig struct {
 	Repository        market.Repository
 	TxManager         domain.TxManager
 	ExchangesRegistry *exchanges.Registry
 	exToMeta          map[string]exchange.Meta
 }
 
-func NewService(cfg ServiceConfig) (market.Service, error) {
+func NewApplication(cfg ApplicationConfig) (market.Application, error) {
 	if cfg.Repository == nil {
 		return nil, fmt.Errorf("new market service: %w: market repository", derrors.ErrRequired)
 	}

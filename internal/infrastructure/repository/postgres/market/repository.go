@@ -9,10 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/pulsoats/core/domain/derrors"
 	"github.com/pulsoats/core/domain/exchange"
 	coremarket "github.com/pulsoats/core/domain/market"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/market"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 )
@@ -35,7 +34,7 @@ func (r *repo) SyncExchanges(ctx context.Context, metas []exchange.Meta) error {
 	for i, meta := range metas {
 		code := strings.TrimSpace(meta.Code)
 		if code == "" {
-			return fmt.Errorf("sync exchanges: %w: empty exchange code", derrors.ErrInvalidArgument)
+			return fmt.Errorf("sync exchanges: %w: empty exchange code", errorsx.ErrInvalidArgument)
 		}
 		values = append(values, fmt.Sprintf("($%d)", i+1))
 		args = append(args, code)
@@ -49,7 +48,7 @@ func (r *repo) SyncExchanges(ctx context.Context, metas []exchange.Meta) error {
 
 	q := r.qp.Get(ctx)
 	if _, err := q.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("sync exchanges: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("sync exchanges: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }
@@ -75,7 +74,7 @@ func (r *repo) Exists(ctx context.Context, spec coremarket.Spec) (bool, error) {
 	).Scan(&exists)
 
 	if err != nil {
-		return false, fmt.Errorf("market exists: %w: %v", errorsx.ErrInternal, err)
+		return false, fmt.Errorf("market exists: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return exists, nil
@@ -103,23 +102,23 @@ func (r *repo) CreateMarketSpec(ctx context.Context, spec coremarket.Spec) error
 				// рынок уже создан параллельно — считаем успехом
 				return nil
 			case "23503":
-				return fmt.Errorf("create market spec: exchange %s: %w", spec.Exchange, derrors.ErrNotFound)
+				return fmt.Errorf("create market spec: exchange %s: %w", spec.Exchange, errorsx.ErrNotFound)
 
 			case "23502":
-				return fmt.Errorf("create market spec: %w", derrors.ErrInvalidArgument)
+				return fmt.Errorf("create market spec: %w", errorsx.ErrInvalidArgument)
 
 			case "22P02":
-				return fmt.Errorf("create market spec: %w", derrors.ErrInvalidArgument)
+				return fmt.Errorf("create market spec: %w", errorsx.ErrInvalidArgument)
 
 			case "40001", "40P01":
 				// serialization failure / deadlock
 				return fmt.Errorf("create market spec: retry transaction: %w", err)
 			default:
-				return fmt.Errorf("create market spec: %w: %v", errorsx.ErrInternal, err)
+				return fmt.Errorf("create market spec: %w", errors.Join(errorsx.ErrInternal, err))
 			}
 		}
 
-		return fmt.Errorf("create market spec: %w: %v", errorsx.ErrInternal, err)
+		return fmt.Errorf("create market spec: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
@@ -139,7 +138,7 @@ func (r *repo) ListSymbols(ctx context.Context, exchange string, category corema
 	q := r.qp.Get(ctx)
 	rows, err := q.Query(ctx, query, exchange, category)
 	if err != nil {
-		return nil, fmt.Errorf("list symbols: %w: %v", errorsx.ErrInternal, err)
+		return nil, fmt.Errorf("list symbols: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	symbols, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (string, error) {
@@ -152,7 +151,7 @@ func (r *repo) ListSymbols(ctx context.Context, exchange string, category corema
 		return symbol, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list symbols: %w: %v", errorsx.ErrInternal, err)
+		return nil, fmt.Errorf("list symbols: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	slices.Sort(symbols)
@@ -181,7 +180,7 @@ func (r *repo) Suggest(ctx context.Context, exchange string, query string, limit
 	q := r.qp.Get(ctx)
 	rows, err := q.Query(ctx, suggestQuery, exchange, query, limit)
 	if err != nil {
-		return nil, fmt.Errorf("suggest markets: %w: %v", errorsx.ErrInternal, err)
+		return nil, fmt.Errorf("suggest markets: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	defer rows.Close()
 
@@ -199,7 +198,7 @@ func (r *repo) Suggest(ctx context.Context, exchange string, query string, limit
 		}, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("suggest markets: %w: %v", errorsx.ErrInternal, err)
+		return nil, fmt.Errorf("suggest markets: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 	return suggestions, nil
 }

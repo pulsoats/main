@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pulsoats/core/errorsx"
 )
 
 func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
-		return nil, fmt.Errorf("POSTGRES_DSN is empty")
+		return nil, fmt.Errorf("postgres pool: dsn: %w", errorsx.ErrInvalidArgument)
 	}
 
 	cfg, err := pgxpool.ParseConfig(dsn)

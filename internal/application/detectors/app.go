@@ -13,11 +13,11 @@ type service struct {
 	reg *coredetectors.Registry
 }
 
-type ServiceConfig struct {
+type ApplicationConfig struct {
 	DetectorsRegistry *coredetectors.Registry
 }
 
-func NewService(cfg ServiceConfig) (detectors.Service, error) {
+func NewApplication(cfg ApplicationConfig) (detectors.Application, error) {
 	if cfg.DetectorsRegistry == nil {
 		return nil, fmt.Errorf("%w: detectors reg", derrors.ErrRequired)
 	}

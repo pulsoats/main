@@ -11,16 +11,16 @@ import (
 
 type service struct {
 	client    analysis.Client
-	marketSvc market.Service
+	marketSvc market.Application
 }
 
-type ServiceConfig struct {
+type ApplicationConfig struct {
 	Client       analysis.Client
-	MarketHelper market.Service
+	MarketHelper market.Application
 }
 
-func NewService(client analysis.Client, marketService market.Service) analysis.Service {
-	return &service{client: client, marketSvc: marketService}
+func NewApplication(client analysis.Client, marketApplication market.Application) analysis.Application {
+	return &service{client: client, marketSvc: marketApplication}
 }
 
 func (s *service) StartRun(ctx context.Context, req analysis.StartRunRequest) (string, error) {
