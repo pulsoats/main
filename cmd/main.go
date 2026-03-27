@@ -34,7 +34,7 @@ import (
 
 const (
 	envHTTPAddr          = "HTTP_ADDR"
-	envAppBaseURL        = "APP_BASE_URL"
+	envAppFrontendURL    = "APP_FRONTEND_URL"
 	envAppName           = "APP_NAME"
 	envJWTSecret         = "JWT_SECRET"
 	envRootAdminEmail    = "ROOT_ADMIN_EMAIL"
@@ -68,9 +68,9 @@ func main() {
 	qp := postgres.NewQuerierProvider(pool)
 	txManager := postgres.NewTxManager(pool)
 
-	baseURL := strings.TrimSpace(os.Getenv(envAppBaseURL))
+	baseURL := strings.TrimSpace(os.Getenv(envAppFrontendURL))
 	if baseURL == "" {
-		zlogger.Fatal().Msg("APP_BASE_URL is required")
+		zlogger.Fatal().Msg("APP_FRONTEND_URL is required")
 	}
 	corsOrigins := parseOrigins(os.Getenv(envCORSOrigins))
 	if len(corsOrigins) == 0 {
