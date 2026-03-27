@@ -8,12 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"github.com/pulsoats/core/domain/derrors"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 )
 
 type apiError struct {
-	Error   string `json:"error"`
+	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
@@ -25,13 +24,13 @@ func RespondError(c *gin.Context, err error) {
 
 func mapError(err error) (int, apiError) {
 	switch {
-	case errors.Is(err, derrors.ErrNotFound):
-		return http.StatusNotFound, apiError{"not_found", "Resource not found"}
-	case errors.Is(err, derrors.ErrUnauthorized):
+	case errors.Is(err, errorsx.ErrNotFound):
+		return http.StatusNotFound, apiError{"not_found", friendlyMessage(err)}
+	case errors.Is(err, errorsx.ErrUnauthorized), errors.Is(err, errorsx.ErrUnauthorized):
 		return http.StatusUnauthorized, apiError{"unauthorized", "Unauthorized"}
-	case errors.Is(err, derrors.ErrAlreadyExists):
-		return http.StatusConflict, apiError{"conflict", "Resource already exists"}
-	case errors.Is(err, derrors.ErrInvalidArgument), errors.Is(err, derrors.ErrRequired):
+	case errors.Is(err, errorsx.ErrAlreadyExists):
+		return http.StatusConflict, apiError{"conflict", friendlyMessage(err)}
+	case errors.Is(err, errorsx.ErrInvalidArgument), errors.Is(err, errorsx.ErrRequired):
 		return http.StatusUnprocessableEntity, apiError{"invalid_input", friendlyMessage(err)}
 	case errors.Is(err, errorsx.ErrInternal):
 		return http.StatusInternalServerError, apiError{"internal", "Internal server error"}
@@ -54,6 +53,8 @@ func friendlyMessage(err error) string {
 		return "Invite token already used"
 	case strings.Contains(msg, "invalid credentials"):
 		return "Invalid credentials"
+	case strings.Contains(msg, "admin check"):
+		return "Admin access required"
 	default:
 		return msg
 	}

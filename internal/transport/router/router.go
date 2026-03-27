@@ -4,8 +4,9 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/domain/derrors"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/lib/logx"
+	"github.com/pulsoats/main/internal/ports"
 	"github.com/pulsoats/main/internal/transport/handlers/analysis"
 	"github.com/pulsoats/main/internal/transport/handlers/auth"
 	"github.com/pulsoats/main/internal/transport/handlers/detectors"
@@ -18,29 +19,29 @@ type Config struct {
 	DetectorsHandler *detectors.Handler
 	MarketHandler    *market.Handler
 	AnalysisHandler  *analysis.Handler
-	JWTSecret        []byte
+	TokenService     ports.TokenService
 	Logger           logx.Logger
 	CORSOrigins      []string
 }
 
 func NewRouter(cfg Config) (*gin.Engine, error) {
 	if cfg.AuthHandler == nil {
-		return nil, fmt.Errorf("new router: %w: auth handler", derrors.ErrRequired)
+		return nil, fmt.Errorf("new router: auth handler: %w", errorsx.ErrRequired)
 	}
 	if cfg.DetectorsHandler == nil {
-		return nil, fmt.Errorf("new router: %w: detectors handler", derrors.ErrRequired)
+		return nil, fmt.Errorf("new router: detectors handler: %w", errorsx.ErrInvalidArgument)
 	}
 	if cfg.MarketHandler == nil {
-		return nil, fmt.Errorf("new router: %w: market handler", derrors.ErrRequired)
-	}
-	if cfg.JWTSecret == nil || len(cfg.JWTSecret) == 0 {
-		return nil, fmt.Errorf("new router: %w: jwt secret", derrors.ErrRequired)
+		return nil, fmt.Errorf("new router: market handler: %w", errorsx.ErrInvalidArgument)
 	}
 	if cfg.Logger == nil {
-		return nil, fmt.Errorf("new router: %w: logger", derrors.ErrRequired)
+		return nil, fmt.Errorf("new router: %w: logger", errorsx.ErrInvalidArgument)
+	}
+	if cfg.TokenService == nil {
+		return nil, fmt.Errorf("new router: token service: %w", errorsx.ErrRequired)
 	}
 	if len(cfg.CORSOrigins) == 0 {
-		return nil, fmt.Errorf("new router: %w: cors origins", derrors.ErrRequired)
+		return nil, fmt.Errorf("new router: %w: cors origins", errorsx.ErrInvalidArgument)
 	}
 
 	r := gin.New()
@@ -51,31 +52,33 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	public.POST("/register", cfg.AuthHandler.Register)
 	public.POST("/login", cfg.AuthHandler.Login)
 	public.GET("/verify", cfg.AuthHandler.VerifyEmail)
+	public.POST("/refresh", cfg.AuthHandler.RefreshToken)
+	public.POST("/password/reset/request", cfg.AuthHandler.RequestPasswordReset)
+	public.POST("/password/reset", cfg.AuthHandler.ResetPassword)
 
 	protected := public.Group("")
-	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
-	protected.POST("/logout", cfg.AuthHandler.Logout)
-	protected.POST("/logout-all", cfg.AuthHandler.LogoutAll)
-	protected.POST("/refresh", cfg.AuthHandler.RefreshToken)
+	protected.Use(middleware.AuthMiddleware(cfg.TokenService))
+	protected.DELETE("/logout", cfg.AuthHandler.Logout)
+	protected.DELETE("/logout-all", cfg.AuthHandler.LogoutAll)
 	protected.POST("/password/change", cfg.AuthHandler.ChangePassword)
-	protected.POST("/password/reset/request", cfg.AuthHandler.RequestPasswordReset)
-	protected.POST("/password/reset", cfg.AuthHandler.ResetPassword)
 
-	admin := protected.Group("/admin")
-	admin.Use(middleware.AdminOnlyMiddleware())
-	admin.POST("/invite-token", cfg.AuthHandler.CreateInviteToken)
+	admin := r.Group("/admin")
+	admin.Use(middleware.AuthMiddleware(cfg.TokenService), middleware.AdminOnlyMiddleware())
+	admin.POST("/invite-tokens", cfg.AuthHandler.CreateInviteToken)
+	admin.GET("/invite-tokens", cfg.AuthHandler.ListInviteTokens)
+	admin.DELETE("/invite-tokens/:token_id", cfg.AuthHandler.RevokeInviteToken)
 
 	marketGroup := r.Group("/market")
-	marketGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret))
-	marketGroup.GET("/exchanges", cfg.MarketHandler.ListExchangeMetas)
+	marketGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+	marketGroup.GET("/exchanges/meta", cfg.MarketHandler.ListExchangeMetas)
 	marketGroup.GET("/symbols", cfg.MarketHandler.ListSymbols)
 
 	detectorsGroup := r.Group("/detectors")
-	detectorsGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret))
-	detectorsGroup.GET("", cfg.DetectorsHandler.ListMetas)
+	detectorsGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+	detectorsGroup.GET("/meta", cfg.DetectorsHandler.ListMetas)
 
 	analysisGroup := r.Group("/runs")
-	analysisGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
 	analysisGroup.GET("", cfg.AnalysisHandler.ListRuns)
 	analysisGroup.POST("", cfg.AnalysisHandler.StartRun)
 	analysisGroup.GET("/:run_id/status", cfg.AnalysisHandler.RunStatus)

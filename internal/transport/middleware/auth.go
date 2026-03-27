@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/main/internal/application/auth"
+	"github.com/google/uuid"
+	"github.com/pulsoats/main/internal/domain/auth"
+	"github.com/pulsoats/main/internal/ports"
 )
 
 const (
@@ -14,42 +16,35 @@ const (
 	ContextSessionIDKey = "session_id"
 )
 
-func AuthMiddleware(secret []byte) gin.HandlerFunc {
+func AuthMiddleware(tokenService ports.TokenService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "missing authorization header",
-			})
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		const prefix = "Bearer "
 		if !strings.HasPrefix(authHeader, prefix) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid authorization header",
-			})
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, prefix))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "empty token",
-			})
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
-		claims, err := auth.ParseAccessToken(tokenString, secret)
+		claims, err := tokenService.ParseAccessToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid token",
-			})
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		c.Set(ContextUserIDKey, claims.UserID)
 		c.Set(ContextRoleKey, claims.Role)
+		c.Set(ContextSessionIDKey, claims.SessionID)
 
 		c.Next()
 	}
@@ -59,16 +54,12 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, ok := GetRole(c)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid role",
-			})
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		if role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "forbidden",
-			})
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 
@@ -76,32 +67,33 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 	}
 }
 
-func GetUserID(c *gin.Context) (int64, bool) {
+func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 	v, ok := c.Get(ContextUserIDKey)
 	if !ok {
-		return 0, false
+		return uuid.Nil, false
 	}
 
-	userID, ok := v.(int64)
+	userID, ok := v.(uuid.UUID)
 	return userID, ok
 }
 
-func GetRole(c *gin.Context) (string, bool) {
+func GetRole(c *gin.Context) (auth.UserRole, bool) {
 	v, ok := c.Get(ContextRoleKey)
 	if !ok {
 		return "", false
 	}
 
-	role, ok := v.(string)
+	role, ok := v.(auth.UserRole)
+
 	return role, ok
 }
 
-func GetSessionID(c *gin.Context) (int64, bool) {
+func GetSessionID(c *gin.Context) (uuid.UUID, bool) {
 	v, ok := c.Get(ContextSessionIDKey)
 	if !ok {
-		return 0, false
+		return uuid.Nil, false
 	}
 
-	sessionID, ok := v.(int64)
+	sessionID, ok := v.(uuid.UUID)
 	return sessionID, ok
 }

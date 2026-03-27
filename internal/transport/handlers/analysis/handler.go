@@ -9,55 +9,54 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/domain/derrors"
 	"github.com/pulsoats/core/domain/market"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/transport/errorx"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
 type Handler struct {
-	service analysis.Service
+	app app
 }
 
-func NewHandler(service analysis.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(app app) *Handler {
+	return &Handler{app: app}
 }
 
 func (h *Handler) StartRun(c *gin.Context) {
 	var req startRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, err.Error()))
+		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, derrors.ErrUnauthorized)
+		errorx.RespondError(c, errorsx.ErrUnauthorized)
 		return
 	}
 
 	interval, ok := market.ParseInterval(req.Interval)
 	if !ok {
-		errorx.RespondError(c, fmt.Errorf("%w: interval %s", derrors.ErrNotFound, req.Interval))
+		errorx.RespondError(c, fmt.Errorf("%w: interval %s", errorsx.ErrNotFound, req.Interval))
 		return
 	}
 
 	from, err := time.Parse(time.RFC3339, req.From)
 	if err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: from_time", derrors.ErrInvalidArgument))
+		errorx.RespondError(c, fmt.Errorf("%w: fromTime", errorsx.ErrInvalidArgument))
 		return
 	}
 
 	to, err := time.Parse(time.RFC3339, req.To)
 	if err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: to_time", derrors.ErrInvalidArgument))
+		errorx.RespondError(c, fmt.Errorf("%w: toTime", errorsx.ErrInvalidArgument))
 		return
 	}
 
 	startRunReq := analysis.StartRunRequest{
-		UserID:    strconv.FormatInt(userID, 10),
+		UserID:    userID.String(),
 		Market:    mapToMarketSpec(req.Market),
 		Interval:  interval,
 		From:      from,
@@ -67,7 +66,7 @@ func (h *Handler) StartRun(c *gin.Context) {
 		Fees:      mapToFees(req.Fees),
 	}
 
-	runID, err := h.service.StartRun(c.Request.Context(), startRunReq)
+	runID, err := h.app.StartRun(c.Request.Context(), startRunReq)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -79,11 +78,11 @@ func (h *Handler) StartRun(c *gin.Context) {
 func (h *Handler) RunStatus(c *gin.Context) {
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", derrors.ErrRequired))
+		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
 		return
 	}
 
-	status, err := h.service.RunStatus(c.Request.Context(), runID)
+	status, err := h.app.RunStatus(c.Request.Context(), runID)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -98,11 +97,11 @@ func (h *Handler) RunStatus(c *gin.Context) {
 func (h *Handler) RunMeta(c *gin.Context) {
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", derrors.ErrRequired))
+		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
 		return
 	}
 
-	meta, err := h.service.RunMeta(c.Request.Context(), runID)
+	meta, err := h.app.RunMeta(c.Request.Context(), runID)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -114,11 +113,11 @@ func (h *Handler) RunMeta(c *gin.Context) {
 func (h *Handler) RunResult(c *gin.Context) {
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", derrors.ErrRequired))
+		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
 		return
 	}
 
-	archive, err := h.service.RunResult(c.Request.Context(), runID)
+	archive, err := h.app.RunResult(c.Request.Context(), runID)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -138,23 +137,23 @@ func (h *Handler) ListRuns(c *gin.Context) {
 	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed <= 0 {
-			errorx.RespondError(c, fmt.Errorf("%w: limit", derrors.ErrInvalidArgument))
+			errorx.RespondError(c, fmt.Errorf("%w: limit", errorsx.ErrInvalidArgument))
 			return
 		}
 		limit = parsed
 	}
 
 	var beforeID *int64
-	if rawBefore := strings.TrimSpace(c.Query("before_id")); rawBefore != "" {
+	if rawBefore := strings.TrimSpace(c.Query("beforeId")); rawBefore != "" {
 		id, err := strconv.ParseInt(rawBefore, 10, 64)
 		if err != nil {
-			errorx.RespondError(c, fmt.Errorf("%w: before_id", derrors.ErrInvalidArgument))
+			errorx.RespondError(c, fmt.Errorf("%w: before_id", errorsx.ErrInvalidArgument))
 			return
 		}
 		beforeID = &id
 	}
 
-	page, err := h.service.ListRunsPaged(c.Request.Context(), limit, beforeID)
+	page, err := h.app.ListRunsPaged(c.Request.Context(), limit, beforeID)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return

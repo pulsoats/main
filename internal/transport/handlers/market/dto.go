@@ -2,19 +2,15 @@ package market
 
 import "github.com/pulsoats/core/domain/exchange"
 
-type listExchangeMetasResponse struct {
-	Metas []exchangeMeta `json:"metas"`
-}
-
-type exchangeMeta struct {
-	Code       string   `json:"exchange_code"`
+type exchangeMetaResponse struct {
+	Code       string   `json:"code"`
 	Intervals  []string `json:"intervals"`
 	Categories []string `json:"categories"`
-	PriceTypes []string `json:"price_types"`
+	PriceTypes []string `json:"priceTypes"`
 }
 
-func mapExchangeMetasToResponse(metas []exchange.Meta) listExchangeMetasResponse {
-	res := make([]exchangeMeta, 0, len(metas))
+func mapExchangeMetasToResponseSlice(metas []exchange.Meta) []exchangeMetaResponse {
+	res := make([]exchangeMetaResponse, 0, len(metas))
 	for _, m := range metas {
 		intervals := make([]string, 0, len(m.Intervals))
 		for _, i := range m.Intervals {
@@ -31,7 +27,7 @@ func mapExchangeMetasToResponse(metas []exchange.Meta) listExchangeMetasResponse
 			priceTypes = append(priceTypes, string(t))
 		}
 
-		res = append(res, exchangeMeta{
+		res = append(res, exchangeMetaResponse{
 			Code:       m.Code,
 			Intervals:  intervals,
 			Categories: categories,
@@ -39,9 +35,5 @@ func mapExchangeMetasToResponse(metas []exchange.Meta) listExchangeMetasResponse
 		})
 	}
 
-	return listExchangeMetasResponse{Metas: res}
-}
-
-type listSymbolsResponse struct {
-	Symbols []string `json:"symbols"`
+	return res
 }

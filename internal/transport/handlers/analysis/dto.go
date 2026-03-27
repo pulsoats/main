@@ -14,9 +14,9 @@ import (
 type startRunRequest struct {
 	Market    marketSpecRequest     `json:"market" binding:"required"`
 	Interval  string                `json:"interval" binding:"required"`
-	From      string                `json:"from_time" binding:"required"` //  ISO‑8601 | RFC3339
-	To        string                `json:"to_time" binding:"required"`   //  ISO‑8601 | RFC3339
-	PriceType string                `json:"price_type" binding:"required"`
+	From      string                `json:"fromTime" binding:"required"` //  ISO‑8601 | RFC3339
+	To        string                `json:"toTime" binding:"required"`   //  ISO‑8601 | RFC3339
+	PriceType string                `json:"priceType" binding:"required"`
 	Detector  detectorConfigRequest `json:"detector" binding:"required"`
 	Fees      *feesRequest          `json:"fees"`
 }
@@ -78,8 +78,8 @@ func mapToDetectorConfigResponse(cfg detect.DetectorConfig) detectorConfigRespon
 }
 
 type feesRequest struct {
-	TakerFee float64 `json:"taker_fee" binding:"required"`
-	MakerFee float64 `json:"maker_fee" binding:"required"`
+	TakerFee float64 `json:"takerFee" binding:"required"`
+	MakerFee float64 `json:"makerFee" binding:"required"`
 }
 
 func mapToFees(req *feesRequest) *market.TakerMakerFees {
@@ -96,7 +96,7 @@ func mapToFees(req *feesRequest) *market.TakerMakerFees {
 }
 
 type startRunResponse struct {
-	RunID string `json:"run_id"`
+	RunID string `json:"runId"`
 }
 
 type runStatusResponse struct {
@@ -109,11 +109,11 @@ type runMetaResponse struct {
 	Market       marketSpecResponse     `json:"market"`
 	Interval     string                 `json:"interval"`
 	Detector     detectorConfigResponse `json:"detector"`
-	From         string                 `json:"from_time"` //  ISO‑8601 | RFC3339
-	To           string                 `json:"to_time"`   //  ISO‑8601 | RFC3339
-	SignalsCount string                 `json:"signals_count"`
-	AvgProfit    float64                `json:"avg_profit"`
-	CreatedAt    string                 `json:"created_at"` // ISO‑8601 | RFC3339
+	From         string                 `json:"fromTime"` //  ISO‑8601 | RFC3339
+	To           string                 `json:"toTime"`   //  ISO‑8601 | RFC3339
+	SignalsCount string                 `json:"signalsCount"`
+	AvgProfit    float64                `json:"avgProfit"`
+	CreatedAt    string                 `json:"createdAt"` // ISO‑8601 | RFC3339
 }
 
 func mapToRunMetaResponse(meta analysis.Run) runMetaResponse {
@@ -132,9 +132,9 @@ func mapToRunMetaResponse(meta analysis.Run) runMetaResponse {
 }
 
 type runListResponse struct {
-	Items        []runMetaResponse `json:"items"`
-	NextBeforeID *int64            `json:"next_before_id,omitempty"`
-	HasMore      bool              `json:"has_more"`
+	Metas        []runMetaResponse `json:"metas"`
+	NextBeforeID *int64            `json:"nextBeforeId,omitempty"`
+	HasMore      bool              `json:"hasMore"`
 }
 
 func mapRunsPageToResponse(page analysis.RunsPage) runListResponse {
@@ -143,7 +143,7 @@ func mapRunsPageToResponse(page analysis.RunsPage) runListResponse {
 		items = append(items, mapToRunMetaResponse(item))
 	}
 	return runListResponse{
-		Items:        items,
+		Metas:        items,
 		NextBeforeID: page.NextBeforeID,
 		HasMore:      page.HasMore,
 	}

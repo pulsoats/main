@@ -4,20 +4,24 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/main/internal/domain/detectors"
+	"github.com/pulsoats/core/domain/detect"
 )
 
-type Handler struct {
-	service detectors.Service
+type app interface {
+	ListMetas() []detect.DetectorMeta
 }
 
-func NewHandler(service detectors.Service) *Handler {
-	return &Handler{service: service}
+type Handler struct {
+	app app
+}
+
+func NewHandler(app app) *Handler {
+	return &Handler{app: app}
 }
 
 func (h *Handler) ListMetas(c *gin.Context) {
-	metas := h.service.ListMetas()
-	resp := mapMetasToResponse(metas)
+	metas := h.app.ListMetas()
+	resp := mapMetasToResponseSlice(metas)
 
 	c.JSON(http.StatusOK, resp)
 }

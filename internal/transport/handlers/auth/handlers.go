@@ -1,108 +1,134 @@
 package auth
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/domain/derrors"
-	"github.com/pulsoats/core/lib/errorsx"
+	"github.com/google/uuid"
+	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/domain/auth"
 	"github.com/pulsoats/main/internal/transport/errorx"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
-type service interface {
-	InviteToken(ctx context.Context, userID int64) (string, error)
-
-	Register(ctx context.Context, email, password string, inviteToken string) error
-	VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error
-
-	Login(ctx context.Context, input auth.LoginInput) (resp auth.LoginResponse, err error)
-	Logout(ctx context.Context, sessionID int64) error
-	LogoutAll(ctx context.Context, userID int64, exceptedSessionID int64) error
-
-	RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error)
-
-	ChangePassword(ctx context.Context, input auth.ChangePasswordInput) error
-	RequestPasswordReset(ctx context.Context, email string) error
-	ResetPassword(ctx context.Context, resetPasswordToken string, newPassword string) error
-	EnsureRoot(ctx context.Context, email, password string) error
-}
-
 type Handler struct {
-	service service
-	baseURL string
-	logger  logx.Logger
+	app    app
+	logger logx.Logger
 }
 
 type Config struct {
-	Service service
-	BaseURL string
-	Logger  logx.Logger
+	Application app
+	BaseURL     string
+	Logger      logx.Logger
 }
 
 func NewHandler(cfg Config) (*Handler, error) {
-	if cfg.Service == nil {
-		return nil, fmt.Errorf("auth handler: %w: auth service", derrors.ErrRequired)
+	if cfg.Application == nil {
+		return nil, fmt.Errorf("auth handler: %w: auth service", errorsx.ErrRequired)
 	}
 	if cfg.BaseURL == "" {
-		return nil, fmt.Errorf("auth handler: %w: base url", derrors.ErrRequired)
+		return nil, fmt.Errorf("auth handler: %w: base url", errorsx.ErrRequired)
 	}
 	if cfg.Logger == nil {
-		return nil, fmt.Errorf("auth handler: %w: logger", derrors.ErrRequired)
+		return nil, fmt.Errorf("auth handler: %w: logger", errorsx.ErrRequired)
 	}
 	return &Handler{
-		service: cfg.Service,
-		baseURL: cfg.BaseURL,
-		logger:  cfg.Logger,
+		app:    cfg.Application,
+		logger: cfg.Logger,
 	}, nil
 }
 
 func (h *Handler) CreateInviteToken(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, derrors.ErrUnauthorized)
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		return
+	}
+	role, ok := middleware.GetRole(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
 		return
 	}
 
-	token, err := h.service.InviteToken(c.Request.Context(), userID)
+	token, link, err := h.app.CreateInviteToken(c.Request.Context(), userID, role)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
 
-	u, err := url.Parse(h.baseURL)
-	if err != nil {
-		h.logger.Error("")
-		errorx.RespondError(c, errorsx.ErrInternal)
+	c.JSON(http.StatusCreated, createInviteTokenResponse{
+		Token: mapToInviteTokenResponse(token),
+		Link:  link,
+	})
+}
+
+func (h *Handler) ListInviteTokens(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		return
+	}
+	role, ok := middleware.GetRole(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
 		return
 	}
 
-	u = u.JoinPath("register")
-	q := u.Query()
-	q.Set("token", token)
-	u.RawQuery = q.Encode()
+	tokens, err := h.app.ListInviteTokens(c.Request.Context(), userID, role)
+	if err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
 
-	c.JSON(http.StatusCreated, createInviteTokenResponse{
-		InviteToken: token,
-		InviteLink:  u.String(),
-	})
+	resp := mapInviteTokensToSliceResponse(tokens)
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) RevokeInviteToken(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		return
+	}
+	role, ok := middleware.GetRole(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
+		return
+	}
+
+	rawID := strings.TrimSpace(c.Param("token_id"))
+	if rawID == "" {
+		errorx.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrRequired))
+		return
+	}
+
+	tokenID, err := uuid.Parse(rawID)
+	if err != nil {
+		errorx.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrInvalidArgument))
+		return
+	}
+
+	if err := h.app.RevokeInviteToken(c.Request.Context(), userID, tokenID, role); err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, err.Error()))
+		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
-	err := h.service.Register(c.Request.Context(), req.Email, req.Password, req.InviteToken)
+	err := h.app.Register(c.Request.Context(), req.Email, req.Password, req.InviteToken)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -114,11 +140,11 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) VerifyEmail(c *gin.Context) {
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: token", derrors.ErrRequired))
+		errorx.RespondError(c, fmt.Errorf("%w: token", errorsx.ErrRequired))
 		return
 	}
 
-	if err := h.service.VerifyEmailByToken(c.Request.Context(), token); err != nil {
+	if err := h.app.VerifyEmailByToken(c.Request.Context(), token); err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
@@ -128,7 +154,7 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, err.Error()))
+		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
@@ -142,7 +168,7 @@ func (h *Handler) Login(c *gin.Context) {
 		UserAgent: &agent,
 	}
 
-	resp, err := h.service.Login(c.Request.Context(), input)
+	resp, err := h.app.Login(c.Request.Context(), input)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -154,32 +180,35 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) Logout(c *gin.Context) {
 	sessionID, ok := middleware.GetSessionID(c)
 	if !ok {
-		c.Status(http.StatusUnauthorized)
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
 		return
 	}
-	err := h.service.Logout(c.Request.Context(), sessionID)
+	err := h.app.Logout(c.Request.Context(), sessionID)
 	if err != nil {
 		errorx.RespondError(c, err)
+		return
 	}
 
 	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) LogoutAll(c *gin.Context) {
-	sessionID, ok := middleware.GetSessionID(c)
-	if !ok {
-		c.Status(http.StatusUnauthorized)
-		return
-	}
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.Status(http.StatusUnauthorized)
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 
-	err := h.service.LogoutAll(c.Request.Context(), userID, sessionID)
+	sessionID, ok := middleware.GetSessionID(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
+		return
+	}
+
+	err := h.app.LogoutAll(c.Request.Context(), userID, sessionID)
 	if err != nil {
 		errorx.RespondError(c, err)
+		return
 	}
 
 	c.Status(http.StatusNoContent)
@@ -188,19 +217,19 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req refreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, err.Error()))
+		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	token := req.RefreshToken
 
-	resp, err := h.service.RefreshToken(c.Request.Context(), token)
+	resp, err := h.app.RefreshToken(c.Request.Context(), token)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, refreshTokenResponse{
+	c.JSON(http.StatusOK, refreshTokenResponse{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
 	})
@@ -209,22 +238,22 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 func (h *Handler) ChangePassword(c *gin.Context) {
 	var req changePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", derrors.ErrInvalidArgument, err.Error()))
+		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, derrors.ErrUnauthorized)
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 	sessionID, ok := middleware.GetSessionID(c)
 	if !ok {
-		errorx.RespondError(c, derrors.ErrUnauthorized)
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
 		return
 	}
 
-	err := h.service.ChangePassword(c.Request.Context(), auth.ChangePasswordInput{
+	err := h.app.ChangePassword(c.Request.Context(), auth.ChangePasswordInput{
 		UserID:           userID,
 		CurrentSessionID: sessionID,
 		CurrentPassword:  req.CurrentPassword,
@@ -234,7 +263,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		errorx.RespondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Password changed"})
+	c.Status(http.StatusOK)
 }
 
 func (h *Handler) RequestPasswordReset(c *gin.Context) {
@@ -244,13 +273,13 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 		return
 	}
 
-	err := h.service.RequestPasswordReset(c.Request.Context(), req.Email)
+	err := h.app.RequestPasswordReset(c.Request.Context(), req.Email)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset email sent"})
+	c.Status(http.StatusOK)
 }
 
 func (h *Handler) ResetPassword(c *gin.Context) {
@@ -260,11 +289,12 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	err := h.service.ResetPassword(c.Request.Context(), req.ResetPasswordToken, req.NewPassword)
+	err := h.app.ResetPassword(c.Request.Context(), req.ResetPasswordToken, req.NewPassword)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Password has been reset"})
+	c.Status(http.StatusOK)
 }
+
