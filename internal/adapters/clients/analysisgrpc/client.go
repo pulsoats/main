@@ -9,7 +9,6 @@ import (
 
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/main/internal/adapters/clients"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,21 +47,6 @@ func (c *client) StartRun(ctx context.Context, request analysis.StartRunRequest)
 	}
 
 	return resp.RunId, nil
-}
-
-func (c *client) GetRunStatus(ctx context.Context, runID string) (analysis.RunStatus, error) {
-	req := &analysispb.GetRunRequest{RunId: runID}
-
-	resp, err := c.conn.GetRunStatus(ctx, req)
-	if err != nil {
-		return analysis.RunStatus{}, fmt.Errorf("get run status: %w", mapGRPCError(err))
-	}
-
-	status, ok := clients.MapRunStatusResponse(resp)
-	if !ok {
-		return analysis.RunStatus{}, fmt.Errorf("get run status: %w: resp is nil", errorsx.ErrInvalidArgument)
-	}
-	return status, nil
 }
 
 func (c *client) GetRunMeta(ctx context.Context, runID string) (analysis.Run, error) {
@@ -114,13 +98,22 @@ func (c *client) GetRunResult(ctx context.Context, runID string) (chan []byte, e
 	return out, nil
 }
 
-func (c *client) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
+func (c *client) ShareRun(ctx context.Context, runID string) error {
+	_, err := c.conn.ShareRun(ctx, &analysispb.ShareRunRequest{RunId: runID})
+	if err != nil {
+		return fmt.Errorf("share run: %w", mapGRPCError(err))
+	}
+	return nil
+}
+
+func (c *client) ListRunsPaged(ctx context.Context, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 
 	req := &analysispb.ListRunsRequest{
-		Limit: int32(limit),
+		Limit:  int32(limit),
+		Filter: mapRunFilter(filter),
 	}
 	if beforeID != nil {
 		req.BeforeId = *beforeID

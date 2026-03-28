@@ -33,6 +33,7 @@ type Run struct {
 	SignalsCount int64
 	AvgProfitPPM int64
 	CreatedAt    time.Time
+	Status       RunStatus
 }
 
 type RunStatus struct {

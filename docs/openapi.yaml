@@ -254,16 +254,33 @@ paths:
   /runs:
     get:
       summary: Список прогонов
-      description: Возвращает постраничный список аналитических прогонов пользователя. Используйте `limit` для размера страницы и `beforeId`, чтобы получить предыдущие страницы (значение передаётся из `nextBeforeId`).
+      description: |
+        Возвращает постраничный список аналитических прогонов.
+
+        **Фильтрация** управляется параметром `filter`:
+        - `mine` *(по умолчанию)* — только прогоны текущего пользователя
+        - `shared` — прогоны, расшаренные другими пользователями
+        - `all` — все доступные прогоны
+
+        **Пагинация** реализована через курсор: передайте `beforeId` со значением `nextBeforeId` из предыдущего ответа, чтобы получить следующую страницу. Параметр `limit` задаёт размер страницы (по умолчанию 20).
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
         - in: query
+          name: filter
+          schema:
+            type: string
+            enum: [mine, shared, all]
+            default: mine
+          description: Фильтр прогонов. Если не передан — возвращаются только прогоны текущего пользователя.
+        - in: query
           name: limit
-          schema: {type: integer, minimum: 1, maximum: 100}
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+          description: Количество элементов на странице.
         - in: query
           name: beforeId
           schema: {type: integer}
+          description: Курсор для пагинации. Берётся из поля `nextBeforeId` предыдущего ответа.
       responses:
         '200':
           description: Страница прогонов
@@ -296,32 +313,15 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /runs/{run_id}/status:
-    get:
-      summary: Статус прогона
-      description: Возвращает текущий статус выбранного прогона.
-      tags: [analysis]
-      security: [ {bearerAuth: []} ]
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema: {type: string}
-      responses:
-        '200':
-          description: Текущий статус
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RunStatusResponse'
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
-        '500': {$ref: '#/components/responses/InternalError'}
   /runs/{run_id}/meta:
     get:
       summary: Метаданные прогона
-      description: Возвращает собранные метаданные выбранного прогона.
+      description: |
+        Возвращает снимок метаданных прогона в текущий момент: рыночные параметры, детектор,
+        временной диапазон, количество сигналов, среднюю прибыль и статус выполнения.
+
+        Для получения метаданных в режиме реального времени используйте SSE-эндпоинт
+        `GET /runs/{run_id}/meta/stream`.
       tags: [analysis]
       security: [ {bearerAuth: []} ]
       parameters:
@@ -335,7 +335,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RunMetaResponse'
+                $ref: '#/components/schemas/RunMeta'
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
@@ -362,6 +362,128 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /runs/{run_id}/share:
+    patch:
+      summary: Расшарить прогон
+      description: |
+        Делает прогон публично доступным для других пользователей (режим `filter=shared`).
+
+        После успешного вызова прогон начинает появляться в списке общих прогонов.
+        Повторный вызов для уже расшаренного прогона возвращает ошибку `400`.
+
+        **Коды ошибок:**
+        - `404` — прогон с указанным `run_id` не существует или не принадлежит текущему пользователю
+        - `400` — прогон уже расшарен или `run_id` не прошёл валидацию на стороне сервиса
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+          description: Идентификатор прогона, который нужно расшарить.
+      responses:
+        '200':
+          description: Прогон расшарен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareRunResponse'
+        '400':
+          description: Некорректный запрос (прогон уже расшарен или невалидный аргумент)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: Прогон не найден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /runs/{run_id}/meta/stream:
+    get:
+      summary: SSE-стрим метаданных прогона
+      description: |
+        Открывает Server-Sent Events (SSE) соединение и отдаёт метаданные прогона в реальном времени.
+
+        Сервер опрашивает `GetRunMeta` каждые **2 секунды** и отправляет актуальный снимок
+        метаданных как SSE-событие. Соединение держится открытым до завершения прогона.
+
+        **Заголовки ответа:**
+        ```
+        Content-Type: text/event-stream
+        Cache-Control: no-cache
+        Connection: keep-alive
+        X-Accel-Buffering: no
+        ```
+
+        **Формат событий:**
+
+        Обычное обновление (каждые 2 с):
+        ```
+        data: {"id":"...","status":{"code":2,"name":"running"},...}
+        ```
+
+        Финальное событие при успехе (`status.code == 3`) или ошибке выполнения (`status.code == 4`):
+        ```
+        data: {"id":"...","status":{"code":3,"name":"done"},...}
+
+        event: done
+        ```
+
+        Ошибка gRPC на стороне сервера:
+        ```
+        event: error
+        data: описание ошибки
+        ```
+
+        **Условия закрытия соединения:**
+        - Статус прогона стал `done` (code 3) или `failed` (code 4) — сервер отправляет `event: done` и закрывает соединение
+        - Клиент разорвал соединение — сервер останавливает поллинг
+        - gRPC вернул ошибку — сервер отправляет `event: error` и закрывает соединение
+
+        **Валидация:** если `run_id` пустой, возвращается `400` **до** открытия SSE-соединения.
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+          description: Идентификатор прогона. Не может быть пустым — иначе возвращается 400 до открытия соединения.
+      responses:
+        '200':
+          description: SSE-поток метаданных прогона
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Поток SSE-событий. Каждое `data`-событие содержит JSON-объект `RunMeta`.
+                  Поток завершается событием `event: done` или `event: error`.
+              example: |
+                data: {"id":"018f...","status":{"code":2,"name":"running"},"market":{"exchange":"bybit","category":"linear","symbol":"BTCUSDT"},"interval":"1h","fromTime":"2024-01-01T00:00:00Z","toTime":"2024-02-01T00:00:00Z","signalsCount":"0","avgProfit":0,"createdAt":"2024-03-01T12:00:00Z"}
+
+                data: {"id":"018f...","status":{"code":3,"name":"done"},"signalsCount":"42","avgProfit":0.0083,...}
+
+                event: done
+        '400':
+          description: run_id пустой или не передан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
 components:
   securitySchemes:
@@ -545,39 +667,82 @@ components:
       properties:
         takerFee: {type: number, format: float, example: 0.0005}
         makerFee: {type: number, format: float, example: 0.0001}
-    RunStatusResponse:
+    RunStatus:
       type: object
+      description: |
+        Статус выполнения прогона.
+
+        | code | name        | Описание                        |
+        |------|-------------|---------------------------------|
+        | 0    | unspecified | Статус не задан                 |
+        | 1    | pending     | Прогон поставлен в очередь      |
+        | 2    | running     | Прогон выполняется              |
+        | 3    | done        | Прогон успешно завершён         |
+        | 4    | failed      | Прогон завершился с ошибкой     |
       properties:
-        status: {type: string, example: running}
-        message: {type: string}
+        code:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+          example: 2
+        name:
+          type: string
+          enum: [unspecified, pending, running, done, failed]
+          example: running
+        message:
+          type: string
+          description: Дополнительное сообщение (например, описание ошибки при status=failed).
+          example: ""
     RunMeta:
       type: object
+      description: Метаданные аналитического прогона.
       properties:
-        id: {type: string}
+        id:
+          type: string
+          description: Идентификатор прогона.
+        status:
+          $ref: '#/components/schemas/RunStatus'
         market:
           $ref: '#/components/schemas/MarketSpec'
-        interval: {type: string}
+        interval:
+          type: string
+          example: 1h
         detector:
           $ref: '#/components/schemas/DetectorConfig'
-        fromTime: {type: string, format: date-time}
-        toTime: {type: string, format: date-time}
-        signalsCount: {type: string}
-        avgProfit: {type: number, format: float}
-        createdAt: {type: string, format: date-time}
-    RunMetaResponse:
+        fromTime:
+          type: string
+          format: date-time
+        toTime:
+          type: string
+          format: date-time
+        signalsCount:
+          type: string
+          description: Количество сигналов, найденных детектором (строка для совместимости с int64).
+          example: "42"
+        avgProfit:
+          type: number
+          format: float
+          description: Средняя прибыль по всем сигналам (в долях, например 0.0083 = 0.83%).
+          example: 0.0083
+        createdAt:
+          type: string
+          format: date-time
+    ShareRunResponse:
       type: object
       properties:
-        meta:
-          $ref: '#/components/schemas/RunMeta'
+        shared:
+          type: boolean
+          example: true
     ListRunsResponse:
       type: object
       properties:
-        metas:
+        items:
           type: array
           items:
             $ref: '#/components/schemas/RunMeta'
         nextBeforeId:
           type: integer
           nullable: true
+          description: Курсор для следующей страницы. Передайте в параметр `beforeId` следующего запроса.
         hasMore:
           type: boolean
+          description: Есть ли ещё страницы после текущей.

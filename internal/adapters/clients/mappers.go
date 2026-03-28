@@ -1,11 +1,9 @@
 package clients
 
 import (
-	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	commonpb "github.com/pulsoats/contracts/gen/go/common/v1"
 	"github.com/pulsoats/core/domain/detect"
 	"github.com/pulsoats/core/domain/market"
-	"github.com/pulsoats/main/internal/domain/analysis"
 )
 
 func MapMarketSpecReq(spec market.Spec) *commonpb.MarketSpec {
@@ -42,17 +40,6 @@ func MapFeesResponse(fees *commonpb.Fees) (market.TakerMakerFees, bool) {
 	return market.TakerMakerFees{
 		TakerFeeRate: fees.TakerFee,
 		MakerFeeRate: fees.MakerFee,
-	}, true
-}
-
-func MapRunStatusResponse(resp *analysispb.GetRunStatusResponse) (analysis.RunStatus, bool) {
-	if resp == nil {
-		return analysis.RunStatus{}, false
-	}
-
-	return analysis.RunStatus{
-		Code:    int(resp.Status),
-		Message: resp.Message,
 	}, true
 }
 

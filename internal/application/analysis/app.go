@@ -39,14 +39,6 @@ func (s *Application) StartRun(ctx context.Context, req analysis.StartRunRequest
 	return runID, nil
 }
 
-func (s *Application) RunStatus(ctx context.Context, runID string) (analysis.RunStatus, error) {
-	status, err := s.client.GetRunStatus(ctx, runID)
-	if err != nil {
-		return analysis.RunStatus{}, fmt.Errorf("run status: %w", err)
-	}
-	return status, nil
-}
-
 func (s *Application) RunMeta(ctx context.Context, runID string) (analysis.Run, error) {
 	meta, err := s.client.GetRunMeta(ctx, runID)
 	if err != nil {
@@ -89,10 +81,17 @@ func (s *Application) RunResult(ctx context.Context, runID string) (analysis.Run
 	}, nil
 }
 
-func (s *Application) ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (analysis.RunsPage, error) {
-	page, err := s.client.ListRunsPaged(ctx, limit, beforeID)
+func (s *Application) ListRunsPaged(ctx context.Context, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
+	page, err := s.client.ListRunsPaged(ctx, limit, beforeID, filter)
 	if err != nil {
 		return analysis.RunsPage{}, fmt.Errorf("list runs: %w", err)
 	}
 	return page, nil
+}
+
+func (s *Application) ShareRun(ctx context.Context, runID string) error {
+	if err := s.client.ShareRun(ctx, runID); err != nil {
+		return fmt.Errorf("share run: %w", err)
+	}
+	return nil
 }

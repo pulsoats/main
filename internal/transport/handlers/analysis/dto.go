@@ -99,13 +99,15 @@ type startRunResponse struct {
 	RunID string `json:"runId"`
 }
 
-type runStatusResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
+type runStatusInfo struct {
+	Code    int    `json:"code"`
+	Name    string `json:"name"`
+	Message string `json:"message,omitempty"`
 }
 
 type runMetaResponse struct {
 	ID           string                 `json:"id"`
+	Status       runStatusInfo          `json:"status"`
 	Market       marketSpecResponse     `json:"market"`
 	Interval     string                 `json:"interval"`
 	Detector     detectorConfigResponse `json:"detector"`
@@ -119,7 +121,12 @@ type runMetaResponse struct {
 func mapToRunMetaResponse(meta analysis.Run) runMetaResponse {
 	avgProfitFloat := float64(meta.AvgProfitPPM) / 1_000_000
 	return runMetaResponse{
-		ID:           meta.ID,
+		ID: meta.ID,
+		Status: runStatusInfo{
+			Code:    meta.Status.Code,
+			Name:    analysis.StatusName(meta.Status.Code),
+			Message: meta.Status.Message,
+		},
 		Market:       mapToMarketSpecResponse(meta.Market),
 		Interval:     meta.Interval.String(),
 		Detector:     mapToDetectorConfigResponse(meta.Detector),
@@ -132,7 +139,7 @@ func mapToRunMetaResponse(meta analysis.Run) runMetaResponse {
 }
 
 type runListResponse struct {
-	Metas        []runMetaResponse `json:"metas"`
+	Items        []runMetaResponse `json:"items"`
 	NextBeforeID *int64            `json:"nextBeforeId,omitempty"`
 	HasMore      bool              `json:"hasMore"`
 }
@@ -143,7 +150,7 @@ func mapRunsPageToResponse(page analysis.RunsPage) runListResponse {
 		items = append(items, mapToRunMetaResponse(item))
 	}
 	return runListResponse{
-		Metas:        items,
+		Items:        items,
 		NextBeforeID: page.NextBeforeID,
 		HasMore:      page.HasMore,
 	}

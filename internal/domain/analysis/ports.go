@@ -13,10 +13,10 @@ import (
 
 type Client interface {
 	StartRun(ctx context.Context, req StartRunRequest) (string, error)
-	GetRunStatus(ctx context.Context, runID string) (RunStatus, error)
 	GetRunMeta(ctx context.Context, runID string) (Run, error)
 	GetRunResult(ctx context.Context, runID string) (chan []byte, error)
-	ListRunsPaged(ctx context.Context, limit int, beforeID *int64) (RunsPage, error)
+	ListRunsPaged(ctx context.Context, limit int, beforeID *int64, filter string) (RunsPage, error)
+	ShareRun(ctx context.Context, runID string) error
 }
 
 type StartRunRequest struct {

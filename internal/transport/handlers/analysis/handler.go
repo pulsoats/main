@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,25 +76,6 @@ func (h *Handler) StartRun(c *gin.Context) {
 	c.JSON(http.StatusCreated, startRunResponse{RunID: runID})
 }
 
-func (h *Handler) RunStatus(c *gin.Context) {
-	runID := c.Param("run_id")
-	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
-		return
-	}
-
-	status, err := h.app.RunStatus(c.Request.Context(), runID)
-	if err != nil {
-		errorx.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, runStatusResponse{
-		Status:  analysis.StatusName(status.Code),
-		Message: status.Message,
-	})
-}
-
 func (h *Handler) RunMeta(c *gin.Context) {
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
@@ -133,6 +115,8 @@ func (h *Handler) RunResult(c *gin.Context) {
 }
 
 func (h *Handler) ListRuns(c *gin.Context) {
+	filter := c.DefaultQuery("filter", "mine")
+
 	limit := 20
 	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
@@ -153,11 +137,74 @@ func (h *Handler) ListRuns(c *gin.Context) {
 		beforeID = &id
 	}
 
-	page, err := h.app.ListRunsPaged(c.Request.Context(), limit, beforeID)
+	page, err := h.app.ListRunsPaged(c.Request.Context(), limit, beforeID, filter)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, mapRunsPageToResponse(page))
+}
+
+func (h *Handler) ShareRun(c *gin.Context) {
+	runID := c.Param("run_id")
+	if strings.TrimSpace(runID) == "" {
+		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrRequired))
+		return
+	}
+
+	if err := h.app.ShareRun(c.Request.Context(), runID); err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"shared": true})
+}
+
+func (h *Handler) StreamRunMeta(c *gin.Context) {
+	runID := c.Param("run_id")
+	if strings.TrimSpace(runID) == "" {
+		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrRequired))
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		errorx.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
+		return
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	ctx := c.Request.Context()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			meta, err := h.app.RunMeta(ctx, runID)
+			if err != nil {
+				fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
+				flusher.Flush()
+				return
+			}
+
+			data, _ := json.Marshal(mapToRunMetaResponse(meta))
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			flusher.Flush()
+
+			if meta.Status.Code == analysis.StatusDone || meta.Status.Code == analysis.StatusFailed {
+				fmt.Fprintf(c.Writer, "event: done\n\n")
+				flusher.Flush()
+				return
+			}
+		}
+	}
 }

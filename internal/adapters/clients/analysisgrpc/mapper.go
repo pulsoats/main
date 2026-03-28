@@ -33,18 +33,30 @@ func mapRequestToGRPC(cmd analysis.StartRunRequest) (*analysispb.StartRunRequest
 }
 
 func mapRunMetaResponse(resp *analysispb.RunMeta) (analysis.Run, error) {
+	if resp == nil {
+		return analysis.Run{}, fmt.Errorf("map run meta response: %w: resp is nil", errorsx.ErrInternal)
+	}
+
 	ms, ok := clients.MapMarketSpecResponse(resp.Market)
 	if !ok {
-		return analysis.Run{}, fmt.Errorf("map run meta response: %w: resp is nil", errorsx.ErrInvalidArgument)
+		return analysis.Run{}, fmt.Errorf("map run meta response: %w: market is nil", errorsx.ErrInternal)
 	}
 
 	interval, ok := market.ParseInterval(resp.Interval)
 	if !ok {
-		return analysis.Run{}, fmt.Errorf("map run meta response: %w: interval %v", errorsx.ErrNotFound, resp.Interval)
+		return analysis.Run{}, fmt.Errorf("map run meta response: %w: interval %v", errorsx.ErrInternal, resp.Interval)
 	}
 	detector, ok := clients.MapDetectorConfigResponse(resp.Detector)
 	if !ok {
-		return analysis.Run{}, fmt.Errorf("map run meta response: %w: resp is nil", errorsx.ErrInvalidArgument)
+		return analysis.Run{}, fmt.Errorf("map run meta response: %w: detector is nil", errorsx.ErrInternal)
+	}
+
+	var runStatus analysis.RunStatus
+	if resp.Status != nil {
+		runStatus = analysis.RunStatus{
+			Code:    int(resp.Status.Code),
+			Message: resp.Status.Message,
+		}
 	}
 
 	return analysis.Run{
@@ -55,7 +67,19 @@ func mapRunMetaResponse(resp *analysispb.RunMeta) (analysis.Run, error) {
 		SignalsCount: resp.SignalsCount,
 		AvgProfitPPM: resp.AvgProfitPpm,
 		CreatedAt:    resp.CreatedAt.AsTime(),
+		Status:       runStatus,
 	}, nil
+}
+
+func mapRunFilter(filter string) analysispb.RunFilter {
+	switch filter {
+	case "shared":
+		return analysispb.RunFilter_RUN_FILTER_SHARED
+	case "all":
+		return analysispb.RunFilter_RUN_FILTER_ALL
+	default:
+		return analysispb.RunFilter_RUN_FILTER_MINE
+	}
 }
 
 func mapFeesRequest(fees *market.TakerMakerFees) *commonpb.Fees {

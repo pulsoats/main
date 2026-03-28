@@ -81,9 +81,10 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
 	analysisGroup.GET("", cfg.AnalysisHandler.ListRuns)
 	analysisGroup.POST("", cfg.AnalysisHandler.StartRun)
-	analysisGroup.GET("/:run_id/status", cfg.AnalysisHandler.RunStatus)
 	analysisGroup.GET("/:run_id/meta", cfg.AnalysisHandler.RunMeta)
+	analysisGroup.GET("/:run_id/meta/stream", cfg.AnalysisHandler.StreamRunMeta)
 	analysisGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunResult)
+	analysisGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
 
 	return r, nil
 }
