@@ -158,7 +158,10 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
+	ip := c.GetHeader("X-Real-IP")
+	if ip == "" {
+		ip = c.ClientIP()
+	}
 	agent := c.Request.UserAgent()
 
 	input := auth.LoginInput{

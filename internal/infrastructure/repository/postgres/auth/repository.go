@@ -379,7 +379,7 @@ func (r *repo) CreateSession(ctx context.Context, session *auth.Session) error {
 
 func (r *repo) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (auth.Session, error) {
 	const query = `
-	SELECT id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked_at, created_at
+	SELECT id, user_id, refresh_token_hash, user_agent, ip_address::text, expires_at, revoked_at, created_at
 	FROM auth.user_sessions
 	WHERE refresh_token_hash = $1;
 	`
@@ -409,7 +409,7 @@ func (r *repo) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash s
 
 func (r *repo) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
 	const query = `
-	SELECT id, user_id, refresh_token_hash, user_agent, ip_address, expires_at, revoked_at, created_at
+	SELECT id, user_id, refresh_token_hash, user_agent, ip_address::text, expires_at, revoked_at, created_at
 	FROM auth.user_sessions
 	WHERE user_id = $1
 	AND revoked_at IS NULL
