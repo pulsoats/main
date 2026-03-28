@@ -58,6 +58,7 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	protected := public.Group("")
 	protected.Use(middleware.AuthMiddleware(cfg.TokenService))
+	protected.GET("/sessions", cfg.AuthHandler.ListActiveSessions)
 	protected.DELETE("/logout", cfg.AuthHandler.Logout)
 	protected.DELETE("/logout-all", cfg.AuthHandler.LogoutAll)
 	protected.POST("/password/change", cfg.AuthHandler.ChangePassword)

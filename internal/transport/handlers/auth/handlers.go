@@ -217,6 +217,23 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) ListActiveSessions(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		return
+	}
+
+	sessions, err := h.app.ListActiveSessionsByUserID(c.Request.Context(), userID)
+	if err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	resp := mapToSessionResponseSlice(sessions)
+	c.JSON(http.StatusOK, resp)
+}
+
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req refreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -300,4 +317,3 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 
 	c.Status(http.StatusOK)
 }
-
