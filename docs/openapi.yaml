@@ -703,17 +703,21 @@ components:
           $ref: '#/components/schemas/RunStatus'
         market:
           $ref: '#/components/schemas/MarketSpec'
+        priceType:
+          type: string
+          description: Тип цены, использованной при анализе.
+          example: mark
         interval:
           type: string
           example: 1h
-        detector:
-          $ref: '#/components/schemas/DetectorConfig'
         fromTime:
           type: string
           format: date-time
         toTime:
           type: string
           format: date-time
+        detector:
+          $ref: '#/components/schemas/DetectorConfig'
         signalsCount:
           type: string
           description: Количество сигналов, найденных детектором (строка для совместимости с int64).
@@ -723,9 +727,21 @@ components:
           format: float
           description: Средняя прибыль по всем сигналам (в долях, например 0.0083 = 0.83%).
           example: 0.0083
+        createdBy:
+          type: string
+          description: UUID пользователя, запустившего прогон.
         createdAt:
           type: string
           format: date-time
+        isShared:
+          type: boolean
+          description: Расшарен ли прогон другим пользователям.
+          example: false
+        sharedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Время расшаривания. Присутствует только если isShared=true.
     ShareRunResponse:
       type: object
       properties:

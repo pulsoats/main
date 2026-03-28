@@ -25,15 +25,19 @@ var runStatusNames = map[int]string{
 
 type Run struct {
 	ID           string
+	Status       RunStatus
 	Market       market.Spec
+	PriceType    string
 	Interval     market.Interval
-	Detector     detect.DetectorConfig
 	From         time.Time
 	To           time.Time
+	Detector     detect.DetectorConfig
 	SignalsCount int64
 	AvgProfitPPM int64
+	CreatedBy    string
 	CreatedAt    time.Time
-	Status       RunStatus
+	IsShared     bool
+	SharedAt     *time.Time
 }
 
 type RunStatus struct {

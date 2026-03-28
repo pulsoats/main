@@ -2,6 +2,7 @@ package analysisgrpc
 
 import (
 	"fmt"
+	"time"
 
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	commonpb "github.com/pulsoats/contracts/gen/go/common/v1"
@@ -59,15 +60,27 @@ func mapRunMetaResponse(resp *analysispb.RunMeta) (analysis.Run, error) {
 		}
 	}
 
+	var sharedAt *time.Time
+	if resp.SharedAt != nil {
+		t := resp.SharedAt.AsTime()
+		sharedAt = &t
+	}
+
 	return analysis.Run{
 		ID:           resp.Id,
+		Status:       runStatus,
 		Market:       ms,
+		PriceType:    resp.PriceType,
 		Interval:     interval,
+		From:         resp.From.AsTime(),
+		To:           resp.To.AsTime(),
 		Detector:     detector,
 		SignalsCount: resp.SignalsCount,
 		AvgProfitPPM: resp.AvgProfitPpm,
+		CreatedBy:    resp.CreatedBy,
 		CreatedAt:    resp.CreatedAt.AsTime(),
-		Status:       runStatus,
+		IsShared:     resp.IsShared,
+		SharedAt:     sharedAt,
 	}, nil
 }
 
