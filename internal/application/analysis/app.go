@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/google/uuid"
 	"github.com/pulsoats/core/domain/market"
 	"github.com/pulsoats/main/internal/domain/analysis"
 )
@@ -81,16 +82,16 @@ func (s *Application) RunResult(ctx context.Context, runID string) (analysis.Run
 	}, nil
 }
 
-func (s *Application) ListRunsPaged(ctx context.Context, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
-	page, err := s.client.ListRunsPaged(ctx, limit, beforeID, filter)
+func (s *Application) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
+	page, err := s.client.ListRunsPaged(ctx, userID, limit, beforeID, filter)
 	if err != nil {
 		return analysis.RunsPage{}, fmt.Errorf("list runs: %w", err)
 	}
 	return page, nil
 }
 
-func (s *Application) ShareRun(ctx context.Context, runID string) error {
-	if err := s.client.ShareRun(ctx, runID); err != nil {
+func (s *Application) ShareRun(ctx context.Context, userID uuid.UUID, runID string) error {
+	if err := s.client.ShareRun(ctx, userID, runID); err != nil {
 		return fmt.Errorf("share run: %w", err)
 	}
 	return nil

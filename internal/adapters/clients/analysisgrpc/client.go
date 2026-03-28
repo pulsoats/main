@@ -8,11 +8,13 @@ import (
 	"strings"
 
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
+	"github.com/google/uuid"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -98,7 +100,8 @@ func (c *client) GetRunResult(ctx context.Context, runID string) (chan []byte, e
 	return out, nil
 }
 
-func (c *client) ShareRun(ctx context.Context, runID string) error {
+func (c *client) ShareRun(ctx context.Context, userID uuid.UUID, runID string) error {
+	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("user-id", userID.String()))
 	_, err := c.conn.ShareRun(ctx, &analysispb.ShareRunRequest{RunId: runID})
 	if err != nil {
 		return fmt.Errorf("share run: %w", mapGRPCError(err))
@@ -106,10 +109,12 @@ func (c *client) ShareRun(ctx context.Context, runID string) error {
 	return nil
 }
 
-func (c *client) ListRunsPaged(ctx context.Context, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
+func (c *client) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
 	if limit <= 0 {
 		limit = 20
 	}
+
+	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("user-id", userID.String()))
 
 	req := &analysispb.ListRunsRequest{
 		Limit:  int32(limit),

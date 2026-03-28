@@ -115,6 +115,12 @@ func (h *Handler) RunResult(c *gin.Context) {
 }
 
 func (h *Handler) ListRuns(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errorsx.ErrUnauthorized)
+		return
+	}
+
 	filter := c.DefaultQuery("filter", "mine")
 
 	limit := 20
@@ -137,7 +143,7 @@ func (h *Handler) ListRuns(c *gin.Context) {
 		beforeID = &id
 	}
 
-	page, err := h.app.ListRunsPaged(c.Request.Context(), limit, beforeID, filter)
+	page, err := h.app.ListRunsPaged(c.Request.Context(), userID, limit, beforeID, filter)
 	if err != nil {
 		errorx.RespondError(c, err)
 		return
@@ -147,13 +153,19 @@ func (h *Handler) ListRuns(c *gin.Context) {
 }
 
 func (h *Handler) ShareRun(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errorsx.ErrUnauthorized)
+		return
+	}
+
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
 		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrRequired))
 		return
 	}
 
-	if err := h.app.ShareRun(c.Request.Context(), runID); err != nil {
+	if err := h.app.ShareRun(c.Request.Context(), userID, runID); err != nil {
 		errorx.RespondError(c, err)
 		return
 	}
