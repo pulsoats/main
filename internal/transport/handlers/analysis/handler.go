@@ -176,7 +176,7 @@ func (h *Handler) ShareRun(c *gin.Context) {
 func (h *Handler) StreamRunMeta(c *gin.Context) {
 	runID := c.Param("run_id")
 	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrRequired))
+		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrInvalidArgument))
 		return
 	}
 
@@ -191,10 +191,48 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
 	ctx := c.Request.Context()
+
+	streamStarted := false
+
+	sendUpdate := func(meta analysis.Run) bool {
+		data, _ := json.Marshal(mapToRunMetaResponse(meta))
+		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+		flusher.Flush()
+		streamStarted = true
+
+		if meta.Status.Code == analysis.StatusDone || meta.Status.Code == analysis.StatusFailed {
+			fmt.Fprintf(c.Writer, "event: done\n\n")
+			flusher.Flush()
+			return true
+		}
+		return false
+	}
+
+	respondStreamError := func(err error) {
+		if !streamStarted && !c.Writer.Written() {
+			errorx.RespondError(c, err)
+			return
+		}
+
+		c.Error(err)
+		_, apiErr := errorx.MapError(err)
+		payload, _ := json.Marshal(apiErr)
+		fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", payload)
+		flusher.Flush()
+	}
+
+	meta, err := h.app.RunMeta(ctx, runID)
+	if err != nil {
+		respondStreamError(err)
+		return
+	}
+	if sendUpdate(meta) {
+		return
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -203,18 +241,11 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 		case <-ticker.C:
 			meta, err := h.app.RunMeta(ctx, runID)
 			if err != nil {
-				fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
-				flusher.Flush()
+				respondStreamError(err)
 				return
 			}
 
-			data, _ := json.Marshal(mapToRunMetaResponse(meta))
-			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-			flusher.Flush()
-
-			if meta.Status.Code == analysis.StatusDone || meta.Status.Code == analysis.StatusFailed {
-				fmt.Fprintf(c.Writer, "event: done\n\n")
-				flusher.Flush()
+			if sendUpdate(meta) {
 				return
 			}
 		}

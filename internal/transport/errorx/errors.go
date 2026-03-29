@@ -11,31 +11,31 @@ import (
 	"github.com/pulsoats/core/errorsx"
 )
 
-type apiError struct {
+type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
 func RespondError(c *gin.Context, err error) {
 	c.Error(err) // store for middleware logging
-	status, apiErr := mapError(err)
+	status, apiErr := MapError(err)
 	c.AbortWithStatusJSON(status, apiErr)
 }
 
-func mapError(err error) (int, apiError) {
+func MapError(err error) (int, APIError) {
 	switch {
 	case errors.Is(err, errorsx.ErrNotFound):
-		return http.StatusNotFound, apiError{"not_found", friendlyMessage(err)}
+		return http.StatusNotFound, APIError{"not_found", friendlyMessage(err)}
 	case errors.Is(err, errorsx.ErrUnauthorized), errors.Is(err, errorsx.ErrUnauthorized):
-		return http.StatusUnauthorized, apiError{"unauthorized", "Unauthorized"}
+		return http.StatusUnauthorized, APIError{"unauthorized", "Unauthorized"}
 	case errors.Is(err, errorsx.ErrAlreadyExists):
-		return http.StatusConflict, apiError{"conflict", friendlyMessage(err)}
+		return http.StatusConflict, APIError{"conflict", friendlyMessage(err)}
 	case errors.Is(err, errorsx.ErrInvalidArgument), errors.Is(err, errorsx.ErrRequired):
-		return http.StatusUnprocessableEntity, apiError{"invalid_input", friendlyMessage(err)}
+		return http.StatusUnprocessableEntity, APIError{"invalid_input", friendlyMessage(err)}
 	case errors.Is(err, errorsx.ErrInternal):
-		return http.StatusInternalServerError, apiError{"internal", "Internal server error"}
+		return http.StatusInternalServerError, APIError{"internal", "Internal server error"}
 	default:
-		return http.StatusBadRequest, apiError{"bad_request", friendlyMessage(err)}
+		return http.StatusBadRequest, APIError{"bad_request", friendlyMessage(err)}
 	}
 }
 
