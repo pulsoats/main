@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/pulsoats/contracts v1.2.0
-	github.com/pulsoats/core v1.1.1
+	github.com/pulsoats/core v1.1.2-0.20260329135827-968936f36218
 	github.com/rs/zerolog v1.34.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
