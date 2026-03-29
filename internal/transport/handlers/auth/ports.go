@@ -19,6 +19,8 @@ type app interface {
 	Logout(ctx context.Context, sessionID uuid.UUID) error
 	LogoutAll(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error
 
+	UserByID(ctx context.Context, id uuid.UUID) (auth.User, error)
+
 	ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
 
 	RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error)

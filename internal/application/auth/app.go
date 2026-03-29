@@ -471,6 +471,15 @@ func (a *Application) LogoutAll(ctx context.Context, userID uuid.UUID, exceptedS
 	return nil
 }
 
+func (a *Application) UserByID(ctx context.Context, userID uuid.UUID) (auth.User, error) {
+	u, err := a.repo.UserByID(ctx, userID)
+	if err != nil {
+		return auth.User{}, fmt.Errorf("user by id: %w", err)
+	}
+
+	return u, nil
+}
+
 func (a *Application) RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error) {
 	tokenHash := a.tokenSvc.HashToken(currentToken)
 

@@ -195,6 +195,24 @@ func (h *Handler) Logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) LogoutBySessionID(c *gin.Context) {
+	rawSessionID := c.Param("session_id")
+
+	sessionID, err := uuid.Parse(rawSessionID)
+	if err != nil {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInvalidArgument, err))
+		return
+	}
+
+	err = h.app.Logout(c.Request.Context(), sessionID)
+	if err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) LogoutAll(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -316,4 +334,21 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+func (h *Handler) Profile(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		return
+	}
+
+	user, err := h.app.UserByID(c.Request.Context(), userID)
+	if err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	resp := mapToUserResponse(user)
+	c.JSON(http.StatusOK, resp)
 }

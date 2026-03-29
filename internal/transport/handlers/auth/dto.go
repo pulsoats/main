@@ -108,3 +108,19 @@ func mapToSessionResponseSlice(sessions []auth.Session) []sessionResponse {
 	}
 	return res
 }
+
+type userResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedAt string    `json:"createdAt"`
+}
+
+func mapToUserResponse(user auth.User) userResponse {
+	return userResponse{
+		ID:        user.ID,
+		Email:     user.Email,
+		Role:      string(user.Role),
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+	}
+}
