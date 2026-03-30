@@ -1,13 +1,13 @@
 package middleware
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/lib/logx"
 )
 
-func LoggerMiddleware(logger logx.Logger) gin.HandlerFunc {
+func LoggerMiddleware(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		start := time.Now()

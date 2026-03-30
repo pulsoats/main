@@ -3,9 +3,10 @@ package router
 import (
 	"fmt"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/ports"
 	"github.com/pulsoats/main/internal/transport/handlers/analysis"
 	"github.com/pulsoats/main/internal/transport/handlers/auth"
@@ -20,7 +21,7 @@ type Config struct {
 	MarketHandler    *market.Handler
 	AnalysisHandler  *analysis.Handler
 	TokenService     ports.TokenService
-	Logger           logx.Logger
+	Logger           *slog.Logger
 	CORSOrigins      []string
 }
 

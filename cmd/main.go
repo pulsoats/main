@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,7 +31,6 @@ import (
 	detectorshandler "github.com/pulsoats/main/internal/transport/handlers/detectors"
 	markethandler "github.com/pulsoats/main/internal/transport/handlers/market"
 	"github.com/pulsoats/main/internal/transport/router"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -54,7 +55,7 @@ const analysisGRPCAddr = "ANALYSIS_GRPC_ADDR"
 
 func main() {
 	zlogger := logger.Configure()
-	appLog := logger.AsLogx(zlogger)
+	appLog := logger.NewSlog(zlogger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -89,7 +90,7 @@ func main() {
 	appName := strings.TrimSpace(os.Getenv(envAppName))
 	authRepository := auth.NewPostgresRepository(qp)
 
-	emailSender, err := createEmailSender(zlogger)
+	emailSender, err := createEmailSender(appLog)
 	if err != nil {
 		zlogger.Fatal().Msg(err.Error())
 	}
@@ -202,30 +203,30 @@ func main() {
 	zlogger.Info().Msg("server stopped")
 }
 
-func createEmailSender(log zerolog.Logger) (mailer.Sender, error) {
+func createEmailSender(log *slog.Logger) (mailer.Sender, error) {
 	accessKey := strings.TrimSpace(os.Getenv(envSESAccessKey))
 	if accessKey == "" {
-		log.Fatal().Msg("SES_ACCESS_KEY is required")
+		return nil, fmt.Errorf("SES_ACCESS_KEY is required")
 	}
 
 	secretKey := strings.TrimSpace(os.Getenv(envSESSecretKey))
 	if secretKey == "" {
-		log.Fatal().Msg("SES_SECRET_KEY is required")
+		return nil, fmt.Errorf("SES_SECRET_KEY is required")
 	}
 
 	region := strings.TrimSpace(os.Getenv(envSESRegion))
 	if region == "" {
-		log.Fatal().Msg("SES_REGION is required")
+		return nil, fmt.Errorf("SES_REGION is required")
 	}
 
 	baseEndpoint := strings.TrimSpace(os.Getenv(envSESBaseEndpoint))
 	if baseEndpoint == "" {
-		log.Fatal().Msg("SES_BASE_ENDPOINT is required")
+		return nil, fmt.Errorf("SES_BASE_ENDPOINT is required")
 	}
 
 	sender := strings.TrimSpace(os.Getenv(envSESSender))
 	if sender == "" {
-		log.Fatal().Msg("SES_SENDER is required")
+		return nil, fmt.Errorf("SES_SENDER is required")
 	}
 
 	cfg := aws_ses.Config{
@@ -234,7 +235,7 @@ func createEmailSender(log zerolog.Logger) (mailer.Sender, error) {
 		AccessKey:    accessKey,
 		SecretKey:    secretKey,
 		Sender:       sender,
-		Logger:       logger.AsLogx(log),
+		Logger:       log,
 	}
 
 	return aws_ses.NewClient(cfg)

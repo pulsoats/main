@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"strings"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/domain/auth"
 	"github.com/pulsoats/main/internal/transport/errorx"
 	"github.com/pulsoats/main/internal/transport/middleware"
@@ -17,13 +18,13 @@ import (
 
 type Handler struct {
 	app    app
-	logger logx.Logger
+	logger *slog.Logger
 }
 
 type Config struct {
 	Application app
 	BaseURL     string
-	Logger      logx.Logger
+	Logger      *slog.Logger
 }
 
 func NewHandler(cfg Config) (*Handler, error) {

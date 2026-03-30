@@ -13,6 +13,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func pbTime(ts *timestamppb.Timestamp) time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	return ts.AsTime()
+}
+
 func mapRequestToGRPC(cmd analysis.StartRunRequest) (*analysispb.StartRunRequest, error) {
 	detCfg := clients.MapDetectorConfigReq(cmd.Detector)
 
@@ -72,13 +79,13 @@ func mapRunMetaResponse(resp *analysispb.RunMeta) (analysis.Run, error) {
 		Market:       ms,
 		PriceType:    resp.PriceType,
 		Interval:     interval,
-		From:         resp.From.AsTime(),
-		To:           resp.To.AsTime(),
+		From:         pbTime(resp.From),
+		To:           pbTime(resp.To),
 		Detector:     detector,
 		SignalsCount: resp.SignalsCount,
 		AvgProfitPPM: resp.AvgProfitPpm,
 		CreatedBy:    resp.CreatedBy,
-		CreatedAt:    resp.CreatedAt.AsTime(),
+		CreatedAt:    pbTime(resp.CreatedAt),
 		IsShared:     resp.IsShared,
 		SharedAt:     sharedAt,
 	}, nil

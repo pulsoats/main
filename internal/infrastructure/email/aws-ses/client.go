@@ -7,11 +7,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"log/slog"
+
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/domain/mailer"
 )
 
@@ -27,7 +28,7 @@ type Config struct {
 	SecretKey    string
 	Sender       string
 
-	Logger logx.Logger
+	Logger *slog.Logger
 }
 
 func NewClient(cfg Config) (mailer.Sender, error) {

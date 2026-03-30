@@ -2,13 +2,13 @@ package aws_ses
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/aws/smithy-go/logging"
-	"github.com/pulsoats/core/lib/logx"
 )
 
 type awsLogger struct {
-	log logx.Logger
+	log *slog.Logger
 }
 
 func (l awsLogger) Logf(class logging.Classification, format string, v ...interface{}) {
@@ -18,4 +18,5 @@ func (l awsLogger) Logf(class logging.Classification, format string, v ...interf
 	} else {
 		l.log.Debug(msg)
 	}
+
 }

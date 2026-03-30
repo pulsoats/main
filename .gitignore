@@ -25,6 +25,9 @@ pkg/
 .DS_Store
 *.swp
 
+# Claude Code
+.claude/
+
 # Logs & misc
 *.log
 tmp/

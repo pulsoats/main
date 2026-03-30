@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/errorsx"
@@ -28,7 +30,7 @@ type Application struct {
 	tokenSvc       ports.TokenService
 	appFrontendURL string
 	appName        string
-	logger         logx.Logger
+	logger         *slog.Logger
 }
 
 type ApplicationConfig struct {
@@ -37,7 +39,7 @@ type ApplicationConfig struct {
 	TokenService   ports.TokenService
 	AppFrontendURL string
 	AppName        string
-	Logger         logx.Logger
+	Logger         *slog.Logger
 	TxManager      domain.TxManager
 }
 
@@ -67,6 +69,11 @@ func NewApplication(cfg ApplicationConfig) (*Application, error) {
 		return nil, fmt.Errorf("auth app: app name: %w", errorsx.ErrInvalidArgument)
 	}
 
+	log := cfg.Logger
+	if log == nil {
+		log = logx.Discard()
+	}
+
 	return &Application{
 		repo:           cfg.Repository,
 		tx:             cfg.TxManager,
@@ -74,7 +81,7 @@ func NewApplication(cfg ApplicationConfig) (*Application, error) {
 		tokenSvc:       cfg.TokenService,
 		appFrontendURL: baseURL,
 		appName:        appName,
-		logger:         cfg.Logger,
+		logger:         log,
 	}, nil
 }
 
@@ -701,9 +708,7 @@ func (a *Application) sendVerificationEmail(ctx context.Context, to, token strin
 	if err := a.emailSender.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send verification email: %w", err)
 	}
-	if a.logger != nil {
-		a.logger.Info("verification email sent", "to", to)
-	}
+	a.logger.Info("verification email sent", "to", to)
 	return nil
 }
 
@@ -713,9 +718,7 @@ func (a *Application) sendPasswordResetEmail(ctx context.Context, to, token stri
 	if err := a.emailSender.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send password reset email: %w", err)
 	}
-	if a.logger != nil {
-		a.logger.Info("password reset email sent", "to", to)
-	}
+	a.logger.Info("password reset email sent", "to", to)
 	return nil
 }
 

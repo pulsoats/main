@@ -29,7 +29,7 @@ func NewClient(addr string) (analysis.Client, error) {
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("analysis client: %w: %v", errors.Join(errorsx.ErrInternal, err))
+		return nil, fmt.Errorf("analysis client: %w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return &client{
@@ -81,7 +81,10 @@ func (c *client) GetRunResult(ctx context.Context, runID string) (chan []byte, e
 
 		for {
 			chunk, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			if err != nil {
 				return
 			}
 
@@ -158,19 +161,21 @@ func mapGRPCError(err error) error {
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return fmt.Errorf("%w: %v", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%w", errors.Join(errorsx.ErrInternal, err))
 	}
 
 	switch st.Code() {
 	case codes.NotFound:
 		return fmt.Errorf("%w: %s", errorsx.ErrNotFound, st.Message())
-	case codes.AlreadyExists, codes.Aborted:
+	case codes.AlreadyExists:
 		return fmt.Errorf("%w: %s", errorsx.ErrAlreadyExists, st.Message())
 	case codes.InvalidArgument, codes.OutOfRange, codes.FailedPrecondition:
 		return fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, st.Message())
-	case codes.Unauthenticated, codes.PermissionDenied:
+	case codes.Unauthenticated:
 		return fmt.Errorf("%w: %s", errorsx.ErrUnauthorized, st.Message())
+	case codes.PermissionDenied:
+		return fmt.Errorf("%w: %s", errorsx.ErrForbidden, st.Message())
 	default:
-		return fmt.Errorf("%w: %v", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%w", errors.Join(errorsx.ErrInternal, err))
 	}
 }

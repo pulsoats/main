@@ -26,8 +26,10 @@ func MapError(err error) (int, APIError) {
 	switch {
 	case errors.Is(err, errorsx.ErrNotFound):
 		return http.StatusNotFound, APIError{"not_found", friendlyMessage(err)}
-	case errors.Is(err, errorsx.ErrUnauthorized), errors.Is(err, errorsx.ErrUnauthorized):
+	case errors.Is(err, errorsx.ErrUnauthorized):
 		return http.StatusUnauthorized, APIError{"unauthorized", "Unauthorized"}
+	case errors.Is(err, errorsx.ErrForbidden):
+		return http.StatusForbidden, APIError{"forbidden", "Forbidden"}
 	case errors.Is(err, errorsx.ErrAlreadyExists):
 		return http.StatusConflict, APIError{"conflict", friendlyMessage(err)}
 	case errors.Is(err, errorsx.ErrInvalidArgument), errors.Is(err, errorsx.ErrRequired):
