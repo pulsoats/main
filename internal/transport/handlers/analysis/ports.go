@@ -13,4 +13,5 @@ type app interface {
 	RunResult(ctx context.Context, runID string) (analysis.RunResultArchive, error)
 	ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (analysis.RunsPage, error)
 	ShareRun(ctx context.Context, userID uuid.UUID, runID string) error
+	DeleteRun(ctx context.Context, userID uuid.UUID, runID string) error
 }

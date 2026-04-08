@@ -363,6 +363,24 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+  /runs/{run_id}:
+    delete:
+      summary: Удалить прогон
+      description: Удаляет прогон по идентификатору. Прогон должен принадлежать текущему пользователю.
+      tags: [analysis]
+      security: [ {bearerAuth: []} ]
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: {type: string}
+          description: Идентификатор прогона.
+      responses:
+        '204': {description: Прогон удалён}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /runs/{run_id}/meta:
     get:
       summary: Метаданные прогона

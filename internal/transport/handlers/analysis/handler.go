@@ -34,7 +34,7 @@ func (h *Handler) StartRun(c *gin.Context) {
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrUnauthorized)
+		errorx.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) RunResult(c *gin.Context) {
 func (h *Handler) ListRuns(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrUnauthorized)
+		errorx.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *Handler) ListRuns(c *gin.Context) {
 func (h *Handler) ShareRun(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrUnauthorized)
+		errorx.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
@@ -231,7 +231,7 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -250,4 +250,25 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func (h *Handler) DeleteRun(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		errorx.RespondError(c, errorsx.ErrInternal)
+		return
+	}
+
+	runID := c.Param("run_id")
+	if runID == "" {
+		errorx.RespondError(c, errorsx.ErrInvalidArgument)
+		return
+	}
+
+	if err := h.app.DeleteRun(c.Request.Context(), userID, runID); err != nil {
+		errorx.RespondError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }

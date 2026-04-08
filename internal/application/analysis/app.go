@@ -23,33 +23,33 @@ func NewApplication(client analysis.Client, marketApplication marketApp) *Applic
 	return &Application{client: client, marketApp: marketApplication}
 }
 
-func (s *Application) StartRun(ctx context.Context, req analysis.StartRunRequest) (string, error) {
+func (a *Application) StartRun(ctx context.Context, req analysis.StartRunRequest) (string, error) {
 	err := req.Validate()
 	if err != nil {
 		return "", fmt.Errorf("start run: %w", err)
 	}
 
-	if err = s.marketApp.EnsureMarket(ctx, req.Market); err != nil {
+	if err = a.marketApp.EnsureMarket(ctx, req.Market); err != nil {
 		return "", fmt.Errorf("start run: %w", err)
 	}
 
-	runID, err := s.client.StartRun(ctx, req)
+	runID, err := a.client.StartRun(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("start run: %w", err)
 	}
 	return runID, nil
 }
 
-func (s *Application) RunMeta(ctx context.Context, runID string) (analysis.Run, error) {
-	meta, err := s.client.GetRunMeta(ctx, runID)
+func (a *Application) RunMeta(ctx context.Context, runID string) (analysis.Run, error) {
+	meta, err := a.client.GetRunMeta(ctx, runID)
 	if err != nil {
 		return analysis.Run{}, fmt.Errorf("run meta: %w", err)
 	}
 	return meta, nil
 }
 
-func (s *Application) RunResult(ctx context.Context, runID string) (analysis.RunResultArchive, error) {
-	stream, err := s.client.GetRunResult(ctx, runID)
+func (a *Application) RunResult(ctx context.Context, runID string) (analysis.RunResultArchive, error) {
+	stream, err := a.client.GetRunResult(ctx, runID)
 	if err != nil {
 		return analysis.RunResultArchive{}, fmt.Errorf("run result: %w", err)
 	}
@@ -82,17 +82,24 @@ func (s *Application) RunResult(ctx context.Context, runID string) (analysis.Run
 	}, nil
 }
 
-func (s *Application) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
-	page, err := s.client.ListRunsPaged(ctx, userID, limit, beforeID, filter)
+func (a *Application) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (analysis.RunsPage, error) {
+	page, err := a.client.ListRunsPaged(ctx, userID, limit, beforeID, filter)
 	if err != nil {
 		return analysis.RunsPage{}, fmt.Errorf("list runs: %w", err)
 	}
 	return page, nil
 }
 
-func (s *Application) ShareRun(ctx context.Context, userID uuid.UUID, runID string) error {
-	if err := s.client.ShareRun(ctx, userID, runID); err != nil {
+func (a *Application) ShareRun(ctx context.Context, userID uuid.UUID, runID string) error {
+	if err := a.client.ShareRun(ctx, userID, runID); err != nil {
 		return fmt.Errorf("share run: %w", err)
+	}
+	return nil
+}
+
+func (a *Application) DeleteRun(ctx context.Context, userID uuid.UUID, runID string) error {
+	if err := a.client.DeleteRun(ctx, userID, runID); err != nil {
+		return fmt.Errorf("delete run: %w", err)
 	}
 	return nil
 }

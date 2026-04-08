@@ -89,6 +89,7 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	analysisGroup.GET("/:run_id/meta/stream", cfg.AnalysisHandler.StreamRunMeta)
 	analysisGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunResult)
 	analysisGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
+	analysisGroup.DELETE("/:run_id", cfg.AnalysisHandler.DeleteRun)
 
 	return r, nil
 }

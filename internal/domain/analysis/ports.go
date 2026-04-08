@@ -18,6 +18,7 @@ type Client interface {
 	GetRunResult(ctx context.Context, runID string) (chan []byte, error)
 	ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int, beforeID *int64, filter string) (RunsPage, error)
 	ShareRun(ctx context.Context, userID uuid.UUID, runID string) error
+	DeleteRun(ctx context.Context, userID uuid.UUID, runID string) error
 }
 
 type StartRunRequest struct {

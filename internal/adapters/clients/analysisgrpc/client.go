@@ -7,14 +7,13 @@ import (
 	"io"
 	"strings"
 
-	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	"github.com/google/uuid"
+	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -104,8 +103,7 @@ func (c *client) GetRunResult(ctx context.Context, runID string) (chan []byte, e
 }
 
 func (c *client) ShareRun(ctx context.Context, userID uuid.UUID, runID string) error {
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("user-id", userID.String()))
-	_, err := c.conn.ShareRun(ctx, &analysispb.ShareRunRequest{RunId: runID})
+	_, err := c.conn.ShareRun(ctx, &analysispb.ShareRunRequest{RunId: runID, UserId: userID.String()})
 	if err != nil {
 		return fmt.Errorf("share run: %w", mapGRPCError(err))
 	}
@@ -117,11 +115,10 @@ func (c *client) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int,
 		limit = 20
 	}
 
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("user-id", userID.String()))
-
 	req := &analysispb.ListRunsRequest{
-		Limit:  int32(limit),
-		Filter: mapRunFilter(filter),
+		Limit:   int32(limit),
+		Filter:  mapRunFilter(filter),
+		User_Id: userID.String(),
 	}
 	if beforeID != nil {
 		req.BeforeId = *beforeID
@@ -152,6 +149,14 @@ func (c *client) ListRunsPaged(ctx context.Context, userID uuid.UUID, limit int,
 		NextBeforeID: nextBeforeID,
 		HasMore:      resp.GetHasMore(),
 	}, nil
+}
+
+func (c *client) DeleteRun(ctx context.Context, userID uuid.UUID, runID string) error {
+	_, err := c.conn.DeleteRun(ctx, &analysispb.DeleteRunRequest{RunId: runID, UserId: userID.String()})
+	if err != nil {
+		return fmt.Errorf("delete run: %w", mapGRPCError(err))
+	}
+	return nil
 }
 
 func mapGRPCError(err error) error {
