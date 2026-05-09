@@ -35,10 +35,19 @@ ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=secret,id=github_token \
+    set -e; \
+    if [ -f /run/secrets/github_token ]; then \
+      printf "machine github.com\nlogin %s\npassword x-oauth-basic\n" \
+        "$(cat /run/secrets/github_token)" > /root/.netrc; \
+      chmod 600 /root/.netrc; \
+    fi; \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS} \
     GOARCH=${TARGETARCH} \
-    go build -o /workspace/bin/pulsoats-main ./cmd
+    go build -o /workspace/bin/pulsoats-main ./cmd; \
+    rm -f /root/.netrc
 
 ########################
 # Runtime
