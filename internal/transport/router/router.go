@@ -2,14 +2,12 @@ package router
 
 import (
 	"fmt"
-
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pulsoats/main/internal/ports"
 	"github.com/pulsoats/main/internal/transport/handlers/analysis"
 	"github.com/pulsoats/main/internal/transport/handlers/auth"
-	livehandler "github.com/pulsoats/main/internal/transport/handlers/live"
 	"github.com/pulsoats/main/internal/transport/handlers/market"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
@@ -18,7 +16,6 @@ type Config struct {
 	AuthHandler     *auth.Handler
 	MarketHandler   *market.Handler
 	AnalysisHandler *analysis.Handler
-	LiveHandler     *livehandler.Handler
 	TokenService    ports.TokenService
 	Logger          *slog.Logger
 	CORSOrigins     []string
@@ -33,9 +30,6 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	}
 	if cfg.AnalysisHandler == nil {
 		return nil, fmt.Errorf("router: analysis handler is nil")
-	}
-	if cfg.LiveHandler == nil {
-		return nil, fmt.Errorf("router: live handler is nil")
 	}
 	if cfg.TokenService == nil {
 		return nil, fmt.Errorf("router: token service is nil")
@@ -82,50 +76,20 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	marketGroup.GET("/symbols", cfg.MarketHandler.ListSymbols)
 	marketGroup.GET("/symbols/suggest", cfg.MarketHandler.Suggest)
 
-	// Analysis handler
-	{
-		analysisGroup := r.Group("/analysis")
-		analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+	analysisGroup := r.Group("/analysis")
+	analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
 
-		analysisRunsGroup := analysisGroup.Group("/runs")
-		analysisRunsGroup.GET("", cfg.AnalysisHandler.ListRuns)
-		analysisRunsGroup.POST("", cfg.AnalysisHandler.NewRun)
-		analysisRunsGroup.GET("/:run_id", cfg.AnalysisHandler.RunByID)
-		analysisRunsGroup.GET("/:run_id/stream", cfg.AnalysisHandler.StreamRun)
-		analysisRunsGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunArchive)
-		analysisRunsGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
-		analysisRunsGroup.DELETE("/:run_id", cfg.AnalysisHandler.DeleteRun)
+	analysisRunsGroup := analysisGroup.Group("/runs")
+	analysisRunsGroup.GET("", cfg.AnalysisHandler.ListRuns)
+	analysisRunsGroup.POST("", cfg.AnalysisHandler.NewRun)
+	analysisRunsGroup.GET("/:run_id", cfg.AnalysisHandler.RunByID)
+	analysisRunsGroup.GET("/:run_id/stream", cfg.AnalysisHandler.StreamRun)
+	analysisRunsGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunArchive)
+	analysisRunsGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
+	analysisRunsGroup.DELETE("/:run_id", cfg.AnalysisHandler.DeleteRun)
 
-		analysisGroup.GET("/info", cfg.AnalysisHandler.Info)
-		analysisGroup.GET("/metrics", cfg.AnalysisHandler.Metrics)
-	}
-
-	// Live handler
-	{
-		liveGroup := r.Group("/live")
-		liveGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
-
-		liveGroup.GET("/services", cfg.LiveHandler.ListServices)
-		liveGroup.POST("/services", middleware.AdminOnlyMiddleware(), cfg.LiveHandler.RegisterService)
-
-		svc := liveGroup.Group("/services/:exchange/:account")
-		svc.DELETE("", middleware.AdminOnlyMiddleware(), cfg.LiveHandler.RemoveService)
-		svc.GET("/info", cfg.LiveHandler.ServiceInfo)
-		svc.GET("/metrics", cfg.LiveHandler.ServiceMetrics)
-		svc.GET("/catalog/exchanges", cfg.LiveHandler.ListAvailableExchanges)
-		svc.GET("/catalog/detectors", cfg.LiveHandler.ListAvailableDetectors)
-
-		svcRuns := svc.Group("/runs")
-		svcRuns.GET("", cfg.LiveHandler.ListRuns)
-		svcRuns.POST("", cfg.LiveHandler.NewRun)
-		svcRuns.GET("/:run_id", cfg.LiveHandler.GetRun)
-		svcRuns.POST("/:run_id/restart", cfg.LiveHandler.RestartRun)
-		svcRuns.DELETE("/:run_id", cfg.LiveHandler.StopRun)
-		svcRuns.DELETE("", cfg.LiveHandler.StopAll)
-
-		svc.GET("/signals", cfg.LiveHandler.ListSignals)
-		svc.GET("/events", cfg.LiveHandler.StreamEvents)
-	}
+	analysisGroup.GET("/info", cfg.AnalysisHandler.Info)
+	analysisGroup.GET("/metrics", cfg.AnalysisHandler.Metrics)
 
 	return r, nil
 }

@@ -19,20 +19,16 @@ import (
 	grpcsystem "github.com/pulsoats/main/internal/adapters/grpc/system"
 	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	appauth "github.com/pulsoats/main/internal/application/auth"
-	applive "github.com/pulsoats/main/internal/application/live"
 	appmarket "github.com/pulsoats/main/internal/application/market"
 	"github.com/pulsoats/main/internal/domain/mailer"
 	tokensvc "github.com/pulsoats/main/internal/infrastructure/auth/token"
 	"github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
-	infraliverpool "github.com/pulsoats/main/internal/infrastructure/live"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres/auth"
 	repomarket "github.com/pulsoats/main/internal/infrastructure/repository/postgres/market"
-	reposystem "github.com/pulsoats/main/internal/infrastructure/repository/postgres/system"
 	"github.com/pulsoats/main/internal/logger"
 	analysishandler "github.com/pulsoats/main/internal/transport/handlers/analysis"
 	authhandler "github.com/pulsoats/main/internal/transport/handlers/auth"
-	livehandler "github.com/pulsoats/main/internal/transport/handlers/live"
 	markethandler "github.com/pulsoats/main/internal/transport/handlers/market"
 	"github.com/pulsoats/main/internal/transport/router"
 )
@@ -128,10 +124,6 @@ func main() {
 		}
 	}
 
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init detectors service")
-	}
-
 	var grpcTLSCfg *tls.Config
 	if strings.TrimSpace(os.Getenv(envGRPCTLSDisable)) != "true" {
 		tlsProvider, err := tlsconfig.New(
@@ -161,6 +153,7 @@ func main() {
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis system client")
 	}
+
 	marketRepo := repomarket.NewPostgresRepository(qp)
 	marketService := appmarket.NewApplication(marketRepo)
 	marketHandler := markethandler.NewHandler(marketService)
@@ -168,16 +161,6 @@ func main() {
 	analysisService, err := appanalysis.NewApplication(analysisClient, analysisCatalogClient, marketRepo, analysisSystemClient)
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis service")
-	}
-
-	systemRepo := reposystem.NewPostgresRepository(qp)
-	livePool := infraliverpool.NewPool(grpcTLSCfg)
-	liveApp := applive.NewApplication(livePool, systemRepo, marketRepo)
-
-	if errs := liveApp.LoadFromDB(ctx); len(errs) > 0 {
-		for _, e := range errs {
-			zlogger.Warn().Err(e).Msg("live pool: failed to restore service from db")
-		}
 	}
 
 	authHandler, err := authhandler.NewHandler(authhandler.Config{
@@ -194,16 +177,10 @@ func main() {
 		zlogger.Fatal().Err(err).Msg("init analysis handler")
 	}
 
-	liveHandler, err := livehandler.NewHandler(liveApp)
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init live handler")
-	}
-
 	httpRouter, err := router.NewRouter(router.Config{
 		AuthHandler:     authHandler,
 		MarketHandler:   marketHandler,
 		AnalysisHandler: analysisHandler,
-		LiveHandler:     liveHandler,
 		TokenService:    tokenService,
 		Logger:          slogAdapter,
 		CORSOrigins:     corsOrigins,
