@@ -121,11 +121,15 @@ func (c *Client) ListRunsPaged(ctx context.Context, callerID uuid.UUID, req anal
 		"x-user-id", callerID.String(),
 	))
 
-	beforeIDStr := req.BeforeID.String()
+	var beforeIDPtr *string
+	if req.BeforeID != nil {
+		s := req.BeforeID.String()
+		beforeIDPtr = &s
+	}
 
 	resp, err := c.conn.ListRunsPaged(ctx, &analysispb.ListRunsRequest{
 		Limit:    req.Limit,
-		BeforeId: &beforeIDStr,
+		BeforeId: beforeIDPtr,
 		Filter:   analysispb.RunFilter(req.Filter),
 	})
 	if err != nil {
