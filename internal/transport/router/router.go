@@ -73,8 +73,13 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	marketGroup := r.Group("/market")
 	marketGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+	marketGroup.GET("/exchanges/meta", cfg.AnalysisHandler.ListAvailableExchanges)
 	marketGroup.GET("/symbols", cfg.MarketHandler.ListSymbols)
 	marketGroup.GET("/symbols/suggest", cfg.MarketHandler.Suggest)
+
+	detGroup := r.Group("/detectors")
+	detGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+	detGroup.GET("/meta", cfg.AnalysisHandler.ListAvailableDetectors)
 
 	analysisGroup := r.Group("/analysis")
 	analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
