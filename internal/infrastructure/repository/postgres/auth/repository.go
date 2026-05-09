@@ -13,15 +13,15 @@ import (
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 )
 
-type repo struct {
+type Repository struct {
 	qp postgres.QuerierProvider
 }
 
-func NewPostgresRepository(qp postgres.QuerierProvider) auth.Repository {
-	return &repo{qp: qp}
+func NewPostgresRepository(qp postgres.QuerierProvider) *Repository {
+	return &Repository{qp: qp}
 }
 
-func (r *repo) CreateInviteToken(ctx context.Context, token auth.InviteToken) error {
+func (r *Repository) CreateInviteToken(ctx context.Context, token auth.InviteToken) error {
 	const query = `
 	INSERT INTO auth.invite_tokens (id, token_hash, created_by, expires_at)
 	VALUES ($1, $2, $3, $4);
@@ -43,7 +43,7 @@ func (r *repo) CreateInviteToken(ctx context.Context, token auth.InviteToken) er
 	return nil
 }
 
-func (r *repo) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.InviteToken, error) {
+func (r *Repository) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.InviteToken, error) {
 	const query = `
 	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
 	FROM auth.invite_tokens
@@ -70,7 +70,7 @@ func (r *repo) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.In
 	return token, nil
 }
 
-func (r *repo) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, error) {
+func (r *Repository) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, error) {
 	const query = `
 	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
 	FROM auth.invite_tokens
@@ -108,7 +108,7 @@ func (r *repo) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, error)
 	return tokens, nil
 }
 
-func (r *repo) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+func (r *Repository) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.invite_tokens
 	SET used_by = $2,
@@ -128,7 +128,7 @@ func (r *repo) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uui
 	return nil
 }
 
-func (r *repo) RevokeInviteToken(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) RevokeInviteToken(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	DELETE FROM auth.invite_tokens
 	WHERE id = $1 AND used_by IS NULL AND used_at IS NULL;
@@ -145,7 +145,7 @@ func (r *repo) RevokeInviteToken(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *repo) CreateUser(ctx context.Context, user *auth.User) error {
+func (r *Repository) CreateUser(ctx context.Context, user *auth.User) error {
 	const query = `
 	INSERT INTO auth.users (id, email, password_hash, role)
 	VALUES ($1, $2, $3, $4);
@@ -170,7 +170,7 @@ func (r *repo) CreateUser(ctx context.Context, user *auth.User) error {
 	return nil
 }
 
-func (r *repo) UserByID(ctx context.Context, id uuid.UUID) (auth.User, error) {
+func (r *Repository) UserByID(ctx context.Context, id uuid.UUID) (auth.User, error) {
 	const query = `
 	SELECT id, email, password_hash, role, email_verified_at, status, locked_until, created_at, updated_at
 	FROM auth.users
@@ -208,7 +208,7 @@ func (r *repo) UserByID(ctx context.Context, id uuid.UUID) (auth.User, error) {
 	return u, nil
 }
 
-func (r *repo) UserByEmail(ctx context.Context, email string) (auth.User, error) {
+func (r *Repository) UserByEmail(ctx context.Context, email string) (auth.User, error) {
 	const query = `
 	SELECT id, email, password_hash, role, email_verified_at, status, locked_until, created_at, updated_at
 	FROM auth.users
@@ -246,7 +246,7 @@ func (r *repo) UserByEmail(ctx context.Context, email string) (auth.User, error)
 	return u, nil
 }
 
-func (r *repo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+func (r *Repository) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
 	const query = `
 	UPDATE auth.users
 	SET password_hash = $2
@@ -265,7 +265,7 @@ func (r *repo) ChangePassword(ctx context.Context, userID uuid.UUID, passwordHas
 	return nil
 }
 
-func (r *repo) SetUserRole(ctx context.Context, userID uuid.UUID, role auth.UserRole) error {
+func (r *Repository) SetUserRole(ctx context.Context, userID uuid.UUID, role auth.UserRole) error {
 	const query = `
 	UPDATE auth.users
 	SET role = $2
@@ -283,7 +283,7 @@ func (r *repo) SetUserRole(ctx context.Context, userID uuid.UUID, role auth.User
 	return nil
 }
 
-func (r *repo) CreatePasswordResetToken(ctx context.Context, token *auth.PasswordResetToken) error {
+func (r *Repository) CreatePasswordResetToken(ctx context.Context, token *auth.PasswordResetToken) error {
 	const query = `
 	INSERT INTO auth.password_reset_tokens (id, user_id, token_hash, expires_at)
 	VALUES ($1, $2, $3, $4)
@@ -305,7 +305,7 @@ func (r *repo) CreatePasswordResetToken(ctx context.Context, token *auth.Passwor
 	return nil
 }
 
-func (r *repo) PasswordResetTokenByHash(ctx context.Context, tokenHash string) (auth.PasswordResetToken, error) {
+func (r *Repository) PasswordResetTokenByHash(ctx context.Context, tokenHash string) (auth.PasswordResetToken, error) {
 	const query = `
 	SELECT id, user_id, token_hash, expires_at, used_at, created_at
 	FROM auth.password_reset_tokens
@@ -333,7 +333,7 @@ func (r *repo) PasswordResetTokenByHash(ctx context.Context, tokenHash string) (
 	return token, nil
 }
 
-func (r *repo) MarkPasswordResetTokenUsed(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) MarkPasswordResetTokenUsed(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.password_reset_tokens
 	SET used_at = now()
@@ -351,7 +351,7 @@ func (r *repo) MarkPasswordResetTokenUsed(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-func (r *repo) CreateSession(ctx context.Context, session *auth.Session) error {
+func (r *Repository) CreateSession(ctx context.Context, session *auth.Session) error {
 	const query = `
 	INSERT INTO auth.user_sessions (id, user_id, refresh_token_hash, user_agent, ip_address, expires_at)
 	VALUES ($1, $2, $3, $4, $5, $6)
@@ -377,7 +377,7 @@ func (r *repo) CreateSession(ctx context.Context, session *auth.Session) error {
 	return nil
 }
 
-func (r *repo) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (auth.Session, error) {
+func (r *Repository) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (auth.Session, error) {
 	const query = `
 	SELECT id, user_id, refresh_token_hash, user_agent, ip_address::text, expires_at, revoked_at, created_at
 	FROM auth.user_sessions
@@ -407,7 +407,7 @@ func (r *repo) SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash s
 	return s, nil
 }
 
-func (r *repo) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
+func (r *Repository) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
 	const query = `
 	SELECT id, user_id, refresh_token_hash, user_agent, ip_address::text, expires_at, revoked_at, created_at
 	FROM auth.user_sessions
@@ -447,7 +447,7 @@ func (r *repo) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID)
 	return sessions, nil
 }
 
-func (r *repo) RevokeSession(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -466,7 +466,7 @@ func (r *repo) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *repo) RevokeSessionsByUser(ctx context.Context, userID uuid.UUID) error {
+func (r *Repository) RevokeSessionsByUser(ctx context.Context, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -482,7 +482,7 @@ func (r *repo) RevokeSessionsByUser(ctx context.Context, userID uuid.UUID) error
 	return nil
 }
 
-func (r *repo) RevokeSessionsByUserExcept(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error {
+func (r *Repository) RevokeSessionsByUserExcept(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error {
 	const query = `
 	UPDATE auth.user_sessions
 	SET revoked_at = now()
@@ -499,7 +499,7 @@ func (r *repo) RevokeSessionsByUserExcept(ctx context.Context, userID uuid.UUID,
 	return nil
 }
 
-func (r *repo) CreateEmailVerificationToken(ctx context.Context, token *auth.EmailVerificationToken) error {
+func (r *Repository) CreateEmailVerificationToken(ctx context.Context, token *auth.EmailVerificationToken) error {
 	const query = `
 	INSERT INTO auth.email_verification_tokens (id, user_id, token_hash, expires_at)
 	VALUES ($1, $2, $3, $4)
@@ -519,7 +519,7 @@ func (r *repo) CreateEmailVerificationToken(ctx context.Context, token *auth.Ema
 	return nil
 }
 
-func (r *repo) EmailVerificationTokenByHash(ctx context.Context, tokenHash string) (auth.EmailVerificationToken, error) {
+func (r *Repository) EmailVerificationTokenByHash(ctx context.Context, tokenHash string) (auth.EmailVerificationToken, error) {
 	const query = `
 	SELECT id, user_id, token_hash, expires_at, used_at, created_at
 	FROM auth.email_verification_tokens
@@ -547,7 +547,7 @@ func (r *repo) EmailVerificationTokenByHash(ctx context.Context, tokenHash strin
 	return t, nil
 }
 
-func (r *repo) MarkEmailVerificationTokenUsed(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) MarkEmailVerificationTokenUsed(ctx context.Context, id uuid.UUID) error {
 	const query = `
 	UPDATE auth.email_verification_tokens
 	SET used_at = now()
@@ -565,7 +565,7 @@ func (r *repo) MarkEmailVerificationTokenUsed(ctx context.Context, id uuid.UUID)
 	return nil
 }
 
-func (r *repo) MarkUserEmailVerified(ctx context.Context, userID uuid.UUID) error {
+func (r *Repository) MarkUserEmailVerified(ctx context.Context, userID uuid.UUID) error {
 	const query = `
 	UPDATE auth.users
 	SET email_verified_at = NOW(),
@@ -584,7 +584,7 @@ func (r *repo) MarkUserEmailVerified(ctx context.Context, userID uuid.UUID) erro
 	return nil
 }
 
-func (r *repo) CreateLoginAttempt(ctx context.Context, attempt auth.LoginAttempt) error {
+func (r *Repository) CreateLoginAttempt(ctx context.Context, attempt auth.LoginAttempt) error {
 	const query = `
 	INSERT INTO auth.login_attempts (id, user_id, email, ip_address, user_agent, success, reason)
 	VALUES ($1, $2, $3, $4, $5, $6, $7);

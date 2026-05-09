@@ -6,48 +6,53 @@ import (
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/ports"
 	"github.com/pulsoats/main/internal/transport/handlers/analysis"
 	"github.com/pulsoats/main/internal/transport/handlers/auth"
-	"github.com/pulsoats/main/internal/transport/handlers/detectors"
+	livehandler "github.com/pulsoats/main/internal/transport/handlers/live"
 	"github.com/pulsoats/main/internal/transport/handlers/market"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
 type Config struct {
-	AuthHandler      *auth.Handler
-	DetectorsHandler *detectors.Handler
-	MarketHandler    *market.Handler
-	AnalysisHandler  *analysis.Handler
-	TokenService     ports.TokenService
-	Logger           *slog.Logger
-	CORSOrigins      []string
+	AuthHandler     *auth.Handler
+	MarketHandler   *market.Handler
+	AnalysisHandler *analysis.Handler
+	LiveHandler     *livehandler.Handler
+	TokenService    ports.TokenService
+	Logger          *slog.Logger
+	CORSOrigins     []string
 }
 
 func NewRouter(cfg Config) (*gin.Engine, error) {
 	if cfg.AuthHandler == nil {
-		return nil, fmt.Errorf("new router: auth handler: %w", errorsx.ErrRequired)
-	}
-	if cfg.DetectorsHandler == nil {
-		return nil, fmt.Errorf("new router: detectors handler: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("router: auth handler is nil")
 	}
 	if cfg.MarketHandler == nil {
-		return nil, fmt.Errorf("new router: market handler: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("router: market handler is nil")
 	}
-	if cfg.Logger == nil {
-		return nil, fmt.Errorf("new router: %w: logger", errorsx.ErrInvalidArgument)
+	if cfg.AnalysisHandler == nil {
+		return nil, fmt.Errorf("router: analysis handler is nil")
+	}
+	if cfg.LiveHandler == nil {
+		return nil, fmt.Errorf("router: live handler is nil")
 	}
 	if cfg.TokenService == nil {
-		return nil, fmt.Errorf("new router: token service: %w", errorsx.ErrRequired)
+		return nil, fmt.Errorf("router: token service is nil")
 	}
 	if len(cfg.CORSOrigins) == 0 {
-		return nil, fmt.Errorf("new router: %w: cors origins", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("router: cors origins is empty")
+	}
+
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(middleware.LoggerMiddleware(cfg.Logger))
+	r.Use(middleware.CORSMiddleware(cfg.CORSOrigins))
+	r.Use(middleware.LoggerMiddleware(logger))
 
 	public := r.Group("/auth")
 	public.POST("/register", cfg.AuthHandler.Register)
@@ -74,22 +79,53 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 
 	marketGroup := r.Group("/market")
 	marketGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
-	marketGroup.GET("/exchanges/meta", cfg.MarketHandler.ListExchangeMetas)
 	marketGroup.GET("/symbols", cfg.MarketHandler.ListSymbols)
+	marketGroup.GET("/symbols/suggest", cfg.MarketHandler.Suggest)
 
-	detectorsGroup := r.Group("/detectors")
-	detectorsGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
-	detectorsGroup.GET("/meta", cfg.DetectorsHandler.ListMetas)
+	// Analysis handler
+	{
+		analysisGroup := r.Group("/analysis")
+		analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
 
-	analysisGroup := r.Group("/runs")
-	analysisGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
-	analysisGroup.GET("", cfg.AnalysisHandler.ListRuns)
-	analysisGroup.POST("", cfg.AnalysisHandler.StartRun)
-	analysisGroup.GET("/:run_id/meta", cfg.AnalysisHandler.RunMeta)
-	analysisGroup.GET("/:run_id/meta/stream", cfg.AnalysisHandler.StreamRunMeta)
-	analysisGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunResult)
-	analysisGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
-	analysisGroup.DELETE("/:run_id", cfg.AnalysisHandler.DeleteRun)
+		analysisRunsGroup := analysisGroup.Group("/runs")
+		analysisRunsGroup.GET("", cfg.AnalysisHandler.ListRuns)
+		analysisRunsGroup.POST("", cfg.AnalysisHandler.NewRun)
+		analysisRunsGroup.GET("/:run_id", cfg.AnalysisHandler.RunByID)
+		analysisRunsGroup.GET("/:run_id/stream", cfg.AnalysisHandler.StreamRun)
+		analysisRunsGroup.GET("/:run_id/result", cfg.AnalysisHandler.RunArchive)
+		analysisRunsGroup.PATCH("/:run_id/share", cfg.AnalysisHandler.ShareRun)
+		analysisRunsGroup.DELETE("/:run_id", cfg.AnalysisHandler.DeleteRun)
+
+		analysisGroup.GET("/info", cfg.AnalysisHandler.Info)
+		analysisGroup.GET("/metrics", cfg.AnalysisHandler.Metrics)
+	}
+
+	// Live handler
+	{
+		liveGroup := r.Group("/live")
+		liveGroup.Use(middleware.AuthMiddleware(cfg.TokenService))
+
+		liveGroup.GET("/services", cfg.LiveHandler.ListServices)
+		liveGroup.POST("/services", middleware.AdminOnlyMiddleware(), cfg.LiveHandler.RegisterService)
+
+		svc := liveGroup.Group("/services/:exchange/:account")
+		svc.DELETE("", middleware.AdminOnlyMiddleware(), cfg.LiveHandler.RemoveService)
+		svc.GET("/info", cfg.LiveHandler.ServiceInfo)
+		svc.GET("/metrics", cfg.LiveHandler.ServiceMetrics)
+		svc.GET("/catalog/exchanges", cfg.LiveHandler.ListAvailableExchanges)
+		svc.GET("/catalog/detectors", cfg.LiveHandler.ListAvailableDetectors)
+
+		svcRuns := svc.Group("/runs")
+		svcRuns.GET("", cfg.LiveHandler.ListRuns)
+		svcRuns.POST("", cfg.LiveHandler.NewRun)
+		svcRuns.GET("/:run_id", cfg.LiveHandler.GetRun)
+		svcRuns.POST("/:run_id/restart", cfg.LiveHandler.RestartRun)
+		svcRuns.DELETE("/:run_id", cfg.LiveHandler.StopRun)
+		svcRuns.DELETE("", cfg.LiveHandler.StopAll)
+
+		svc.GET("/signals", cfg.LiveHandler.ListSignals)
+		svc.GET("/events", cfg.LiveHandler.StreamEvents)
+	}
 
 	return r, nil
 }

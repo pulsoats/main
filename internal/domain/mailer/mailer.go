@@ -2,7 +2,7 @@ package mailer
 
 import "context"
 
-// Message describes contents passed to a Sender implementation.
+// Message описывает содержимое сообщения, передаваемое в Sender.Send.
 type Message struct {
 	To      string
 	Subject string
@@ -10,7 +10,7 @@ type Message struct {
 	HTML    string
 }
 
-// Sender abstracts email delivery transport.
+// Sender является абстракцией сервиса отправки email.
 type Sender interface {
 	Send(ctx context.Context, msg Message) error
 }

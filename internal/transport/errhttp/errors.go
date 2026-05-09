@@ -1,4 +1,4 @@
-package errorx
+package errhttp
 
 import (
 	"errors"

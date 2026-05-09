@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,106 +11,105 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pulsoats/core/domain/market"
+	"github.com/google/uuid"
+	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
+	"github.com/pulsoats/core/exchange"
+	corerun "github.com/pulsoats/core/run"
+	coresystem "github.com/pulsoats/core/system"
+	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	"github.com/pulsoats/main/internal/domain/analysis"
-	"github.com/pulsoats/main/internal/transport/errorx"
+	"github.com/pulsoats/main/internal/transport/errhttp"
+	"github.com/pulsoats/main/internal/transport/handlers/core"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
+type app interface {
+	NewRun(ctx context.Context, callerID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error)
+	RunByID(ctx context.Context, runID uuid.UUID) (analysis.Run, error)
+	StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error
+	ShareRun(ctx context.Context, callerID, runID uuid.UUID) error
+	DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error
+	ListRunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.ListRunsPagedRequest) (analysis.ListRunsPagedResponse, error)
+
+	ListAvailableExchanges(ctx context.Context) ([]exchange.Meta, error)
+	ListAvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error)
+
+	Info(ctx context.Context) (coresystem.ServiceInfo, error)
+	Metrics(ctx context.Context) (coresystem.ServiceMetrics, error)
+}
+
 type Handler struct {
-	app app
+	app *appanalysis.Application
 }
 
-func NewHandler(app app) *Handler {
-	return &Handler{app: app}
+func NewHandler(app *appanalysis.Application) (*Handler, error) {
+	if app == nil {
+		return nil, fmt.Errorf("analysis handler: app: %w", errorsx.ErrRequired)
+	}
+	return &Handler{app: app}, nil
 }
 
-func (h *Handler) StartRun(c *gin.Context) {
-	var req startRunRequest
+func (h *Handler) NewRun(c *gin.Context) {
+	var req newRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
+		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrInternal)
+		errhttp.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
-	interval, ok := market.ParseInterval(req.Interval)
-	if !ok {
-		errorx.RespondError(c, fmt.Errorf("%w: interval %s", errorsx.ErrNotFound, req.Interval))
-		return
-	}
-
-	from, err := time.Parse(time.RFC3339, req.From)
+	input, err := newRunRequestFromRequest(req)
 	if err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: fromTime", errorsx.ErrInvalidArgument))
+		errhttp.RespondError(c, err)
 		return
 	}
 
-	to, err := time.Parse(time.RFC3339, req.To)
+	run, err := h.app.NewRun(c.Request.Context(), userID, input)
 	if err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: toTime", errorsx.ErrInvalidArgument))
+		errhttp.RespondError(c, err)
 		return
 	}
 
-	startRunReq := analysis.StartRunRequest{
-		UserID:    userID.String(),
-		Market:    mapToMarketSpec(req.Market),
-		Interval:  interval,
-		From:      from,
-		To:        to,
-		PriceType: market.PriceType(req.PriceType),
-		Detector:  mapToDetectorConfig(req.Detector),
-		Fees:      mapToFees(req.Fees),
-	}
-
-	runID, err := h.app.StartRun(c.Request.Context(), startRunReq)
-	if err != nil {
-		errorx.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusCreated, startRunResponse{RunID: runID})
+	c.JSON(http.StatusCreated, runToResponse(run))
 }
 
-func (h *Handler) RunMeta(c *gin.Context) {
-	runID := c.Param("run_id")
-	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
-		return
-	}
-
-	meta, err := h.app.RunMeta(c.Request.Context(), runID)
+func (h *Handler) RunByID(c *gin.Context) {
+	runID, err := uuid.Parse(c.Param("run_id"))
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, fmt.Errorf("run_id: %w", errorsx.ErrInvalidArgument))
 		return
 	}
 
-	c.JSON(http.StatusOK, mapToRunMetaResponse(meta))
+	run, err := h.app.RunByID(c.Request.Context(), runID)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, runToResponse(run))
 }
 
-func (h *Handler) RunResult(c *gin.Context) {
-	runID := c.Param("run_id")
-	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: runId", errorsx.ErrRequired))
-		return
-	}
-
-	archive, err := h.app.RunResult(c.Request.Context(), runID)
+func (h *Handler) RunArchive(c *gin.Context) {
+	runID, err := uuid.Parse(c.Param("run_id"))
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, fmt.Errorf("run_id: %w", errorsx.ErrInvalidArgument))
 		return
 	}
-	defer archive.Content.Close()
 
 	c.Header("Content-Type", "application/zip")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, archive.Filename))
-	if _, err := io.Copy(c.Writer, archive.Content); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %v", errorsx.ErrInternal, err))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="run_%s.zip"`, runID.String()))
+
+	if err := h.app.StreamRunArchive(c.Request.Context(), runID, c.Writer); err != nil {
+		if c.Writer.Written() {
+			c.Error(err)
+			return
+		}
+		errhttp.RespondError(c, err)
 		return
 	}
 }
@@ -117,66 +117,75 @@ func (h *Handler) RunResult(c *gin.Context) {
 func (h *Handler) ListRuns(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrInternal)
+		errhttp.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
-	filter := c.DefaultQuery("filter", "mine")
+	filter, err := appanalysis.ParseRunFilter(c.DefaultQuery("filter", "mine"))
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
 
-	limit := 20
+	limit := int32(20)
 	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed <= 0 {
-			errorx.RespondError(c, fmt.Errorf("%w: limit", errorsx.ErrInvalidArgument))
+			errhttp.RespondError(c, fmt.Errorf("limit: %w", errorsx.ErrInvalidArgument))
 			return
 		}
-		limit = parsed
+		limit = int32(parsed)
 	}
 
-	var beforeID *int64
-	if rawBefore := strings.TrimSpace(c.Query("beforeId")); rawBefore != "" {
-		id, err := strconv.ParseInt(rawBefore, 10, 64)
+	var beforeID *uuid.UUID
+	beforeIDStr := strings.TrimSpace(c.Query("beforeId"))
+	if beforeIDStr != "" {
+		id, err := uuid.Parse(beforeIDStr)
 		if err != nil {
-			errorx.RespondError(c, fmt.Errorf("%w: before_id", errorsx.ErrInvalidArgument))
+			errhttp.RespondError(c, fmt.Errorf("beforeId: %w", errorsx.ErrInvalidArgument))
 			return
 		}
 		beforeID = &id
 	}
 
-	page, err := h.app.ListRunsPaged(c.Request.Context(), userID, limit, beforeID, filter)
+	runs, err := h.app.ListRunsPaged(c.Request.Context(), userID, analysis.ListRunsPagedRequest{
+		Limit:    limit,
+		BeforeID: beforeID,
+		Filter:   filter,
+	})
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, mapRunsPageToResponse(page))
+	c.JSON(http.StatusOK, listRunsResponseToResponse(runs))
 }
 
 func (h *Handler) ShareRun(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrInternal)
+		errhttp.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
-	runID := c.Param("run_id")
-	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrRequired))
+	runID, err := uuid.Parse(c.Param("run_id"))
+	if err != nil {
+		errhttp.RespondError(c, fmt.Errorf("run_id: %w", errorsx.ErrInvalidArgument))
 		return
 	}
 
 	if err := h.app.ShareRun(c.Request.Context(), userID, runID); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"shared": true})
 }
 
-func (h *Handler) StreamRunMeta(c *gin.Context) {
-	runID := c.Param("run_id")
-	if strings.TrimSpace(runID) == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: run_id", errorsx.ErrInvalidArgument))
+func (h *Handler) StreamRun(c *gin.Context) {
+	runID, err := uuid.Parse(c.Param("run_id"))
+	if err != nil {
+		errhttp.RespondError(c, fmt.Errorf("run_id: %w", errorsx.ErrInvalidArgument))
 		return
 	}
 
@@ -187,21 +196,22 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		errorx.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
+		errhttp.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
 		return
 	}
 
 	ctx := c.Request.Context()
-
 	streamStarted := false
 
-	sendUpdate := func(meta analysis.Run) bool {
-		data, _ := json.Marshal(mapToRunMetaResponse(meta))
+	var respondStreamError func(error)
+
+	sendUpdate := func(run analysis.Run) bool {
+		data, _ := json.Marshal(runToResponse(run))
 		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 		flusher.Flush()
 		streamStarted = true
 
-		if meta.Status.Code == analysis.StatusDone || meta.Status.Code == analysis.StatusFailed {
+		if run.BaseRun.Status.Code == corerun.StatusCodeDone || run.BaseRun.Status.Code == corerun.StatusCodeFailed {
 			fmt.Fprintf(c.Writer, "event: done\n\n")
 			flusher.Flush()
 			return true
@@ -209,20 +219,20 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 		return false
 	}
 
-	respondStreamError := func(err error) {
+	respondStreamError = func(err error) {
 		if !streamStarted && !c.Writer.Written() {
-			errorx.RespondError(c, err)
+			errhttp.RespondError(c, err)
 			return
 		}
 
 		c.Error(err)
-		_, apiErr := errorx.MapError(err)
+		_, apiErr := errhttp.MapError(err)
 		payload, _ := json.Marshal(apiErr)
 		fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", payload)
 		flusher.Flush()
 	}
 
-	meta, err := h.app.RunMeta(ctx, runID)
+	meta, err := h.app.RunByID(ctx, runID)
 	if err != nil {
 		respondStreamError(err)
 		return
@@ -239,7 +249,7 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			meta, err := h.app.RunMeta(ctx, runID)
+			meta, err := h.app.RunByID(ctx, runID)
 			if err != nil {
 				respondStreamError(err)
 				return
@@ -255,20 +265,60 @@ func (h *Handler) StreamRunMeta(c *gin.Context) {
 func (h *Handler) DeleteRun(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errorsx.ErrInternal)
+		errhttp.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
-	runID := c.Param("run_id")
-	if runID == "" {
-		errorx.RespondError(c, errorsx.ErrInvalidArgument)
+	runID, err := uuid.Parse(c.Param("run_id"))
+	if err != nil {
+		errhttp.RespondError(c, fmt.Errorf("run_id: %w", errorsx.ErrInvalidArgument))
 		return
 	}
 
 	if err := h.app.DeleteRun(c.Request.Context(), userID, runID); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListAvailableExchanges(c *gin.Context) {
+	exchanges, err := h.app.ListAvailableExchanges(c.Request.Context())
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.ListAvailableExchangesToResponse(exchanges))
+}
+
+func (h *Handler) ListAvailableDetectors(c *gin.Context) {
+	exchanges, err := h.app.ListAvailableDetectors(c.Request.Context())
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.ListAvailableDetectorsToResponse(exchanges))
+}
+
+func (h *Handler) Info(c *gin.Context) {
+	info, err := h.app.Info(c.Request.Context())
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.ServiceInfoToResponse(info))
+}
+
+func (h *Handler) Metrics(c *gin.Context) {
+	metrics, err := h.app.Metrics(c.Request.Context())
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.ServiceMetricsToResponse(metrics))
 }
