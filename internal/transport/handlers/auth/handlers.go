@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/main/internal/domain/auth"
-	"github.com/pulsoats/main/internal/transport/errorx"
+	"github.com/pulsoats/main/internal/transport/errhttp"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
 
@@ -46,18 +46,18 @@ func NewHandler(cfg Config) (*Handler, error) {
 func (h *Handler) CreateInviteToken(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 	role, ok := middleware.GetRole(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
 		return
 	}
 
 	token, link, err := h.app.CreateInviteToken(c.Request.Context(), userID, role)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -70,18 +70,18 @@ func (h *Handler) CreateInviteToken(c *gin.Context) {
 func (h *Handler) ListInviteTokens(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 	role, ok := middleware.GetRole(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
 		return
 	}
 
 	tokens, err := h.app.ListInviteTokens(c.Request.Context(), userID, role)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -92,29 +92,29 @@ func (h *Handler) ListInviteTokens(c *gin.Context) {
 func (h *Handler) RevokeInviteToken(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 	role, ok := middleware.GetRole(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong role")))
 		return
 	}
 
 	rawID := strings.TrimSpace(c.Param("token_id"))
 	if rawID == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrRequired))
+		errhttp.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrRequired))
 		return
 	}
 
 	tokenID, err := uuid.Parse(rawID)
 	if err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrInvalidArgument))
+		errhttp.RespondError(c, fmt.Errorf("%w: token_id", errorsx.ErrInvalidArgument))
 		return
 	}
 
 	if err := h.app.RevokeInviteToken(c.Request.Context(), userID, tokenID, role); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -125,13 +125,13 @@ func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
+		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	err := h.app.Register(c.Request.Context(), req.Email, req.Password, req.InviteToken)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -141,12 +141,12 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) VerifyEmail(c *gin.Context) {
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
-		errorx.RespondError(c, fmt.Errorf("%w: token", errorsx.ErrRequired))
+		errhttp.RespondError(c, fmt.Errorf("%w: token", errorsx.ErrRequired))
 		return
 	}
 
 	if err := h.app.VerifyEmailByToken(c.Request.Context(), token); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -155,7 +155,7 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
+		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *Handler) Login(c *gin.Context) {
 
 	resp, err := h.app.Login(c.Request.Context(), input)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -184,12 +184,12 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) Logout(c *gin.Context) {
 	sessionID, ok := middleware.GetSessionID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
 		return
 	}
 	err := h.app.Logout(c.Request.Context(), sessionID)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -201,13 +201,13 @@ func (h *Handler) LogoutBySessionID(c *gin.Context) {
 
 	sessionID, err := uuid.Parse(rawSessionID)
 	if err != nil {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInvalidArgument, err))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInvalidArgument, err))
 		return
 	}
 
 	err = h.app.Logout(c.Request.Context(), sessionID)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -217,19 +217,19 @@ func (h *Handler) LogoutBySessionID(c *gin.Context) {
 func (h *Handler) LogoutAll(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 
 	sessionID, ok := middleware.GetSessionID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
 		return
 	}
 
 	err := h.app.LogoutAll(c.Request.Context(), userID, sessionID)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -239,13 +239,13 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 func (h *Handler) ListActiveSessions(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 
 	sessions, err := h.app.ListActiveSessionsByUserID(c.Request.Context(), userID)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -256,7 +256,7 @@ func (h *Handler) ListActiveSessions(c *gin.Context) {
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req refreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
+		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
@@ -264,7 +264,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	resp, err := h.app.RefreshToken(c.Request.Context(), token)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -277,18 +277,18 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 func (h *Handler) ChangePassword(c *gin.Context) {
 	var req changePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
+		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
 
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 	sessionID, ok := middleware.GetSessionID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin context: wrong session id")))
 		return
 	}
 
@@ -299,7 +299,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		NewPassword:      req.NewPassword,
 	})
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 	c.Status(http.StatusOK)
@@ -308,13 +308,13 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 func (h *Handler) RequestPasswordReset(c *gin.Context) {
 	var req passwordResetEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
 	err := h.app.RequestPasswordReset(c.Request.Context(), req.Email)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -324,13 +324,13 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 func (h *Handler) ResetPassword(c *gin.Context) {
 	var req resetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
 	err := h.app.ResetPassword(c.Request.Context(), req.ResetPasswordToken, req.NewPassword)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 
@@ -340,13 +340,13 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 func (h *Handler) Profile(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		errorx.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
+		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 
 	user, err := h.app.UserByID(c.Request.Context(), userID)
 	if err != nil {
-		errorx.RespondError(c, err)
+		errhttp.RespondError(c, err)
 		return
 	}
 

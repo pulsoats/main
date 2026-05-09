@@ -13,7 +13,6 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/logx"
 	"github.com/pulsoats/main/internal/domain"
 	"github.com/pulsoats/main/internal/domain/auth"
 	"github.com/pulsoats/main/internal/domain/mailer"
@@ -71,7 +70,7 @@ func NewApplication(cfg ApplicationConfig) (*Application, error) {
 
 	log := cfg.Logger
 	if log == nil {
-		log = logx.Discard()
+		log = slog.Default()
 	}
 
 	return &Application{

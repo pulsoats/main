@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,23 +13,26 @@ import (
 	"syscall"
 	"time"
 
-	coredetectors "github.com/pulsoats/core/domain/detect/detectors"
-	"github.com/pulsoats/core/exchanges"
-	"github.com/pulsoats/main/internal/adapters/clients/analysisgrpc"
+	"github.com/pulsoats/core/tlsconfig"
+	"github.com/pulsoats/main/internal/adapters/grpc/analysis"
+	grpccatalog "github.com/pulsoats/main/internal/adapters/grpc/catalog"
+	grpcsystem "github.com/pulsoats/main/internal/adapters/grpc/system"
 	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	appauth "github.com/pulsoats/main/internal/application/auth"
-	appdetectors "github.com/pulsoats/main/internal/application/detectors"
+	applive "github.com/pulsoats/main/internal/application/live"
 	appmarket "github.com/pulsoats/main/internal/application/market"
 	"github.com/pulsoats/main/internal/domain/mailer"
 	tokensvc "github.com/pulsoats/main/internal/infrastructure/auth/token"
 	"github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
+	infraliverpool "github.com/pulsoats/main/internal/infrastructure/live"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres/auth"
-	"github.com/pulsoats/main/internal/infrastructure/repository/postgres/market"
+	repomarket "github.com/pulsoats/main/internal/infrastructure/repository/postgres/market"
+	reposystem "github.com/pulsoats/main/internal/infrastructure/repository/postgres/system"
 	"github.com/pulsoats/main/internal/logger"
 	analysishandler "github.com/pulsoats/main/internal/transport/handlers/analysis"
 	authhandler "github.com/pulsoats/main/internal/transport/handlers/auth"
-	detectorshandler "github.com/pulsoats/main/internal/transport/handlers/detectors"
+	livehandler "github.com/pulsoats/main/internal/transport/handlers/live"
 	markethandler "github.com/pulsoats/main/internal/transport/handlers/market"
 	"github.com/pulsoats/main/internal/transport/router"
 )
@@ -51,11 +55,17 @@ const (
 	envSESSender       = "SES_SENDER"
 )
 
-const analysisGRPCAddr = "ANALYSIS_GRPC_ADDR"
+const (
+	analysisGRPCAddr  = "ANALYSIS_GRPC_ADDR"
+	envGRPCTLSDisable = "GRPC_TLS_DISABLE"
+	envTLSCertFile    = "GRPC_TLS_CERT_FILE"
+	envTLSKeyFile     = "GRPC_TLS_KEY_FILE"
+	envTLSCAFile      = "GRPC_TLS_CA_FILE"
+)
 
 func main() {
 	zlogger := logger.Configure()
-	appLog := logger.NewSlog(zlogger)
+	slogAdapter := logger.NewSlog(zlogger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -90,7 +100,7 @@ func main() {
 	appName := strings.TrimSpace(os.Getenv(envAppName))
 	authRepository := auth.NewPostgresRepository(qp)
 
-	emailSender, err := createEmailSender(appLog)
+	emailSender, err := createEmailSender(slogAdapter)
 	if err != nil {
 		zlogger.Fatal().Msg(err.Error())
 	}
@@ -101,7 +111,7 @@ func main() {
 		TokenService:   tokenService,
 		AppFrontendURL: baseURL,
 		AppName:        appName,
-		Logger:         appLog,
+		Logger:         slogAdapter,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init auth service")
@@ -118,60 +128,85 @@ func main() {
 		}
 	}
 
-	exRegistry := exchanges.NewRegistry(exchanges.WithLogger(appLog))
-	marketRepository := market.NewPostgresRepository(qp)
-	if err := marketRepository.SyncExchanges(ctx, exRegistry.ListMetadata()); err != nil {
-		zlogger.Fatal().Err(err).Msg("sync exchanges in DB")
-	}
-
-	marketApp, err := appmarket.NewApplication(appmarket.ApplicationConfig{
-		Repository:        marketRepository,
-		TxManager:         txManager,
-		ExchangesRegistry: exRegistry,
-	})
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init market service")
-	}
-
-	detRegistry := coredetectors.NewDefaultRegistry()
-	detectorService, err := appdetectors.NewApplication(appdetectors.ApplicationConfig{
-		DetectorsRegistry: detRegistry,
-	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init detectors service")
+	}
+
+	var grpcTLSCfg *tls.Config
+	if strings.TrimSpace(os.Getenv(envGRPCTLSDisable)) != "true" {
+		tlsProvider, err := tlsconfig.New(
+			os.Getenv(envTLSCertFile),
+			os.Getenv(envTLSKeyFile),
+			os.Getenv(envTLSCAFile),
+		)
+		if err != nil {
+			zlogger.Fatal().Err(err).Msg("init tls provider")
+		}
+		grpcTLSCfg = tlsProvider.ClientConfig()
 	}
 
 	analysisAddr := strings.TrimSpace(os.Getenv(analysisGRPCAddr))
 	if analysisAddr == "" {
 		zlogger.Fatal().Msg("ANALYSIS_GRPC_ADDR is required")
 	}
-	analysisClient, err := analysisgrpc.NewClient(analysisAddr)
+	analysisClient, err := analysis.NewClient(analysisAddr, grpcTLSCfg)
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis client")
 	}
-	analysisService := appanalysis.NewApplication(analysisClient, marketApp)
+	analysisCatalogClient, err := grpccatalog.NewClient(analysisAddr, grpcTLSCfg)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init analysis catalog client")
+	}
+	analysisSystemClient, err := grpcsystem.NewClient(analysisAddr, grpcTLSCfg)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init analysis system client")
+	}
+	marketRepo := repomarket.NewPostgresRepository(qp)
+	marketService := appmarket.NewApplication(marketRepo)
+	marketHandler := markethandler.NewHandler(marketService)
+
+	analysisService, err := appanalysis.NewApplication(analysisClient, analysisCatalogClient, marketRepo, analysisSystemClient)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init analysis service")
+	}
+
+	systemRepo := reposystem.NewPostgresRepository(qp)
+	livePool := infraliverpool.NewPool(grpcTLSCfg)
+	liveApp := applive.NewApplication(livePool, systemRepo, marketRepo)
+
+	if errs := liveApp.LoadFromDB(ctx); len(errs) > 0 {
+		for _, e := range errs {
+			zlogger.Warn().Err(e).Msg("live pool: failed to restore service from db")
+		}
+	}
 
 	authHandler, err := authhandler.NewHandler(authhandler.Config{
 		Application: authService,
 		BaseURL:     baseURL,
-		Logger:      appLog,
+		Logger:      slogAdapter,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init auth handler")
 	}
 
-	marketHandler := markethandler.NewHandler(marketApp)
-	detHandler := detectorshandler.NewHandler(detectorService)
-	analysisHandler := analysishandler.NewHandler(analysisService)
+	analysisHandler, err := analysishandler.NewHandler(analysisService)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init analysis handler")
+	}
+
+	liveHandler, err := livehandler.NewHandler(liveApp)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init live handler")
+	}
 
 	httpRouter, err := router.NewRouter(router.Config{
-		AuthHandler:      authHandler,
-		DetectorsHandler: detHandler,
-		MarketHandler:    marketHandler,
-		AnalysisHandler:  analysisHandler,
-		TokenService:     tokenService,
-		Logger:           appLog,
-		CORSOrigins:      corsOrigins,
+		AuthHandler:     authHandler,
+		MarketHandler:   marketHandler,
+		AnalysisHandler: analysisHandler,
+		LiveHandler:     liveHandler,
+		TokenService:    tokenService,
+		Logger:          slogAdapter,
+		CORSOrigins:     corsOrigins,
 	})
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init router")
