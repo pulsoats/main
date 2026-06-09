@@ -1,14 +1,12 @@
 package core
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/core/market"
 	"github.com/pulsoats/core/run"
-	coresystem "github.com/pulsoats/core/system"
 	domainsystem "github.com/pulsoats/main/internal/domain/system"
 )
 
@@ -31,6 +29,7 @@ func MarketSpecToResponse(spec market.Spec) MarketSpecResponse {
 func DetectorConfigFromRequest(req DetectorConfigRequest) detect.DetectorConfig {
 	return detect.DetectorConfig{
 		Code:      req.Code,
+		Version:   req.Version,
 		OptsLabel: req.OptsLabel,
 		Opts:      req.Opts,
 	}
@@ -39,6 +38,7 @@ func DetectorConfigFromRequest(req DetectorConfigRequest) detect.DetectorConfig 
 func DetectorConfigToResponse(cfg detect.DetectorConfig) DetectorConfigResponse {
 	return DetectorConfigResponse{
 		Code:      cfg.Code,
+		Version:   cfg.Version,
 		OptsLabel: cfg.OptsLabel,
 		Opts:      cfg.Opts,
 	}
@@ -54,12 +54,12 @@ func DetectorMetaToResponse(meta detect.DetectorMeta) DetectorMetaResponse {
 	}
 }
 
-func ListAvailableDetectorsToResponse(detectors []detect.DetectorMeta) ListAvailableDetectorsResponse {
+func AvailableDetectorsToResponse(detectors []detect.DetectorMeta) AvailableDetectorsResponse {
 	res := make([]DetectorMetaResponse, 0, len(detectors))
 	for _, d := range detectors {
 		res = append(res, DetectorMetaToResponse(d))
 	}
-	return ListAvailableDetectorsResponse{Detectors: res}
+	return AvailableDetectorsResponse{Detectors: res}
 }
 
 func RunStatusToResponse(status run.Status) RunStatusResponse {
@@ -77,12 +77,12 @@ func ExchangeMetaToResponse(meta exchange.Meta) ExchangeMetaResponse {
 	}
 }
 
-func ListAvailableExchangesToResponse(exchanges []exchange.Meta) ListAvailableExchangesResponse {
+func AvailableExchangesToResponse(exchanges []exchange.Meta) AvailableExchangesResponse {
 	res := make([]ExchangeMetaResponse, 0, len(exchanges))
 	for _, e := range exchanges {
 		res = append(res, ExchangeMetaToResponse(e))
 	}
-	return ListAvailableExchangesResponse{Exchanges: res}
+	return AvailableExchangesResponse{Exchanges: res}
 }
 
 func BaseRunToResponse(base run.Base) BaseRunResponse {
@@ -98,8 +98,7 @@ func BaseRunToResponse(base run.Base) BaseRunResponse {
 	}
 }
 
-// ServiceInfoToResponse маппит core ServiceInfo (из gRPC monitor) — без Addr и timestamps.
-func ServiceInfoToResponse(info coresystem.ServiceInfo) ServiceInfoResponse {
+func ServiceInfoToResponse(info domainsystem.Host) ServiceInfoResponse {
 	return ServiceInfoResponse{
 		ID:       info.ID,
 		Kind:     string(info.Kind),
@@ -110,32 +109,11 @@ func ServiceInfoToResponse(info coresystem.ServiceInfo) ServiceInfoResponse {
 	}
 }
 
-// ServiceToResponse маппит domain Service (из БД) — с Addr, LastSeenAt, CreatedAt.
-func ServiceToResponse(svc domainsystem.Service) ServiceInfoResponse {
-	r := ServiceInfoToResponse(svc.ServiceInfo)
+// ServiceToResponse маппит domain Node (из БД) — с Addr, LastSeenAt, CreatedAt.
+func ServiceToResponse(svc domainsystem.Node) ServiceInfoResponse {
+	r := ServiceInfoToResponse(svc.Host)
 	r.Addr = svc.Addr
 	r.LastSeenAt = svc.LastSeenAt.Format(time.RFC3339)
 	r.CreatedAt = svc.CreatedAt.Format(time.RFC3339)
 	return r
-}
-
-func ServiceMetricsToResponse(metrics coresystem.ServiceMetrics) ServiceMetricsResponse {
-	return ServiceMetricsResponse{
-		Status:        ServiceStatusToString(metrics.Status),
-		CpuPercent:    metrics.CpuPercent,
-		MemoryPercent: metrics.MemoryPercent,
-		UptimeSeconds: strconv.FormatInt(metrics.UptimeSeconds, 10),
-		ReportedAt:    metrics.ReportedAt.Format(time.RFC3339),
-	}
-}
-
-func ServiceStatusToString(status coresystem.ServiceStatus) string {
-	switch status {
-	case coresystem.ServiceStatusHealthy:
-		return "ok"
-	case coresystem.ServiceStatusDegraded:
-		return "degraded"
-	default:
-		return "unknown"
-	}
 }

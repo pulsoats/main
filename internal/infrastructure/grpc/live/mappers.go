@@ -10,8 +10,8 @@ import (
 	livepb "github.com/pulsoats/contracts/gen/go/live/v1"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/main/internal/adapters/grpc/core"
 	"github.com/pulsoats/main/internal/domain/live"
+	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -122,7 +122,7 @@ func eventFromProto(pb *livepb.Event) (live.Event, error) {
 	}
 }
 
-func listRunsFilterToProto(filter *live.ListRunsFilter) *livepb.ListRunsFilter {
+func listRunsFilterToProto(filter *live.RunsFilter) *livepb.ListRunsFilter {
 	if filter == nil {
 		return nil
 	}
@@ -146,7 +146,7 @@ func listRunsFilterToProto(filter *live.ListRunsFilter) *livepb.ListRunsFilter {
 	return &pb
 }
 
-func listRunsRequestToProto(req live.ListRunsRequest) *livepb.ListRunsPagedRequest {
+func listRunsRequestToProto(req live.RunsRequest) *livepb.ListRunsPagedRequest {
 	return &livepb.ListRunsPagedRequest{
 		Limit: req.Limit,
 		BeforeId: func() *string {
@@ -160,16 +160,16 @@ func listRunsRequestToProto(req live.ListRunsRequest) *livepb.ListRunsPagedReque
 	}
 }
 
-func listRunsResponseFromProto(pb *livepb.ListRunsPagedResponse) (live.ListRunsResponse, error) {
+func listRunsResponseFromProto(pb *livepb.ListRunsPagedResponse) (live.RunsResponse, error) {
 	if pb == nil {
-		return live.ListRunsResponse{}, errors.New("resp is nil")
+		return live.RunsResponse{}, errors.New("resp is nil")
 	}
 
 	runs := make([]live.Run, 0, len(pb.Runs))
 	for _, runPb := range pb.Runs {
 		sig, err := runFromProto(runPb)
 		if err != nil {
-			return live.ListRunsResponse{}, err
+			return live.RunsResponse{}, err
 		}
 		runs = append(runs, sig)
 	}
@@ -178,19 +178,19 @@ func listRunsResponseFromProto(pb *livepb.ListRunsPagedResponse) (live.ListRunsR
 	if pb.NextBeforeId != nil {
 		id, err := uuid.Parse(pb.GetNextBeforeId())
 		if err != nil {
-			return live.ListRunsResponse{}, fmt.Errorf("nextBeforeId: %w", err)
+			return live.RunsResponse{}, fmt.Errorf("nextBeforeId: %w", err)
 		}
 		nextBeforeID = &id
 	}
 
-	return live.ListRunsResponse{
+	return live.RunsResponse{
 		Runs:         runs,
 		HasMore:      pb.HasMore,
 		NextBeforeID: nextBeforeID,
 	}, nil
 }
 
-func listSignalsFilterToProto(filter *live.ListSignalsFilter) *livepb.ListSignalsFilter {
+func listSignalsFilterToProto(filter *live.SignalsFilter) *livepb.ListSignalsFilter {
 	if filter == nil {
 		return nil
 	}
@@ -216,7 +216,7 @@ func listSignalsFilterToProto(filter *live.ListSignalsFilter) *livepb.ListSignal
 	return &pb
 }
 
-func listSignalsRequestToProto(req live.ListSignalsPagedRequest) *livepb.ListSignalsPagedRequest {
+func listSignalsRequestToProto(req live.SignalsPagedRequest) *livepb.ListSignalsPagedRequest {
 	return &livepb.ListSignalsPagedRequest{
 		Limit: req.Limit,
 		BeforeId: func() *string {
@@ -230,16 +230,16 @@ func listSignalsRequestToProto(req live.ListSignalsPagedRequest) *livepb.ListSig
 	}
 }
 
-func listSignalsResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.ListSignalsPagedResponse, error) {
+func listSignalsResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.SignalsPagedResponse, error) {
 	if pb == nil {
-		return live.ListSignalsPagedResponse{}, errors.New("pb is nil")
+		return live.SignalsPagedResponse{}, errors.New("pb is nil")
 	}
 
 	signals := make([]detect.Signal, 0, len(pb.Signals))
 	for _, sigPb := range pb.Signals {
 		sig, err := signalFromProto(sigPb)
 		if err != nil {
-			return live.ListSignalsPagedResponse{}, err
+			return live.SignalsPagedResponse{}, err
 		}
 		signals = append(signals, sig)
 	}
@@ -248,12 +248,12 @@ func listSignalsResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.Lis
 	if pb.NextBeforeId != nil {
 		id, err := uuid.Parse(pb.GetNextBeforeId())
 		if err != nil {
-			return live.ListSignalsPagedResponse{}, fmt.Errorf("nextBeforeId: %w", err)
+			return live.SignalsPagedResponse{}, fmt.Errorf("nextBeforeId: %w", err)
 		}
 		nextBeforeID = &id
 	}
 
-	return live.ListSignalsPagedResponse{
+	return live.SignalsPagedResponse{
 		Signals:      signals,
 		HasMore:      pb.HasMore,
 		NextBeforeID: nextBeforeID,

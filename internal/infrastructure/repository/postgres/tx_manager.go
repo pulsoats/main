@@ -22,9 +22,10 @@ func NewTxManager(pool *pgxpool.Pool) domain.TxManager {
 type txKey struct{}
 
 func (m *txManager) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	const op = "within tx"
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("within tx: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	defer tx.Rollback(ctx)
 
@@ -35,7 +36,7 @@ func (m *txManager) WithinTx(ctx context.Context, fn func(ctx context.Context) e
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("within tx: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }

@@ -70,7 +70,7 @@ func runToResponse(run analysis.Run) runResponse {
 	}
 }
 
-func listRunsResponseToResponse(resp analysis.ListRunsPagedResponse) listRunsResponse {
+func listRunsResponseToResponse(resp analysis.RunsPagedResponse) listRunsResponse {
 	runs := make([]runResponse, 0, len(resp.Runs))
 	for _, r := range resp.Runs {
 		runs = append(runs, runToResponse(r))

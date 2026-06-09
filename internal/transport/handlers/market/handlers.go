@@ -14,7 +14,7 @@ import (
 )
 
 type app interface {
-	ListSymbols(ctx context.Context, exchange string, category string) ([]string, error)
+	Symbols(ctx context.Context, exchange string, category string) ([]string, error)
 	Suggest(ctx context.Context, exchange, query string, limit int) ([]domainmarket.Suggestion, error)
 }
 
@@ -26,7 +26,7 @@ func NewHandler(app app) *Handler {
 	return &Handler{app: app}
 }
 
-func (h *Handler) ListSymbols(c *gin.Context) {
+func (h *Handler) Symbols(c *gin.Context) {
 	ex := strings.TrimSpace(c.Query("exchange"))
 	category := strings.TrimSpace(c.Query("category"))
 
@@ -35,7 +35,7 @@ func (h *Handler) ListSymbols(c *gin.Context) {
 		return
 	}
 
-	symbols, err := h.app.ListSymbols(c.Request.Context(), ex, category)
+	symbols, err := h.app.Symbols(c.Request.Context(), ex, category)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return

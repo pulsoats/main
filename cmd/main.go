@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,22 +15,26 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/pulsoats/core/tlsconfig"
-	"github.com/pulsoats/main/internal/adapters/grpc/analysis"
-	grpccatalog "github.com/pulsoats/main/internal/adapters/grpc/catalog"
-	grpcsystem "github.com/pulsoats/main/internal/adapters/grpc/system"
 	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	appauth "github.com/pulsoats/main/internal/application/auth"
 	applive "github.com/pulsoats/main/internal/application/live"
 	appmarket "github.com/pulsoats/main/internal/application/market"
 	"github.com/pulsoats/main/internal/domain/mailer"
 	tokensvc "github.com/pulsoats/main/internal/infrastructure/auth/token"
-	"github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
-	infraliverpool "github.com/pulsoats/main/internal/infrastructure/live"
+	"github.com/pulsoats/main/internal/infrastructure/certgen"
+	"github.com/pulsoats/main/internal/infrastructure/cryptox"
+	"github.com/pulsoats/main/internal/infrastructure/docker"
+	awsses "github.com/pulsoats/main/internal/infrastructure/email/aws-ses"
+	"github.com/pulsoats/main/internal/infrastructure/grpc/analysis"
+	grpclive "github.com/pulsoats/main/internal/infrastructure/grpc/live"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres"
 	"github.com/pulsoats/main/internal/infrastructure/repository/postgres/auth"
+	repolive "github.com/pulsoats/main/internal/infrastructure/repository/postgres/live"
 	repomarket "github.com/pulsoats/main/internal/infrastructure/repository/postgres/market"
-	reposystem "github.com/pulsoats/main/internal/infrastructure/repository/postgres/system"
 	"github.com/pulsoats/main/internal/logger"
 	analysishandler "github.com/pulsoats/main/internal/transport/handlers/analysis"
 	authhandler "github.com/pulsoats/main/internal/transport/handlers/auth"
@@ -56,11 +62,26 @@ const (
 )
 
 const (
-	analysisGRPCAddr  = "ANALYSIS_GRPC_ADDR"
-	envGRPCTLSDisable = "GRPC_TLS_DISABLE"
-	envTLSCertFile    = "GRPC_TLS_CERT_FILE"
-	envTLSKeyFile     = "GRPC_TLS_KEY_FILE"
-	envTLSCAFile      = "GRPC_TLS_CA_FILE"
+	envAnalysisGRPCAddr = "ANALYSIS_GRPC_ADDR"
+	envGRPCTLSDisable   = "GRPC_TLS_DISABLE"
+	envGRPCCertFile     = "GRPC_CERT_FILE"
+	envGRPCKeyFile      = "GRPC_KEY_FILE"
+	envGRPCCAFile       = "GRPC_CA_FILE"
+	envGRPCCAKeyFile    = "GRPC_CA_KEY_FILE"
+)
+
+const (
+	envGHCRUser      = "GHCR_USER"
+	envGHCRToken     = "GHCR_TOKEN"
+	envLiveImageURL  = "LIVE_IMAGE_URL"
+	envDockerDBImage = "DOCKER_DB_IMAGE"
+	envDockerCACert  = "DOCKER_CA_CERT"
+	envDockerCert    = "DOCKER_CERT"
+	envDockerKey     = "DOCKER_KEY"
+)
+
+const (
+	envCredentialsKey = "CREDENTIALS_KEY" // hex-encoded 32-byte AES key
 )
 
 func main() {
@@ -128,16 +149,12 @@ func main() {
 		}
 	}
 
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init detectors service")
-	}
-
 	var grpcTLSCfg *tls.Config
 	if strings.TrimSpace(os.Getenv(envGRPCTLSDisable)) != "true" {
 		tlsProvider, err := tlsconfig.New(
-			os.Getenv(envTLSCertFile),
-			os.Getenv(envTLSKeyFile),
-			os.Getenv(envTLSCAFile),
+			os.Getenv(envGRPCCertFile),
+			os.Getenv(envGRPCKeyFile),
+			os.Getenv(envGRPCCAFile),
 		)
 		if err != nil {
 			zlogger.Fatal().Err(err).Msg("init tls provider")
@@ -145,7 +162,7 @@ func main() {
 		grpcTLSCfg = tlsProvider.ClientConfig()
 	}
 
-	analysisAddr := strings.TrimSpace(os.Getenv(analysisGRPCAddr))
+	analysisAddr := strings.TrimSpace(os.Getenv(envAnalysisGRPCAddr))
 	if analysisAddr == "" {
 		zlogger.Fatal().Msg("ANALYSIS_GRPC_ADDR is required")
 	}
@@ -153,32 +170,99 @@ func main() {
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis client")
 	}
-	analysisCatalogClient, err := grpccatalog.NewClient(analysisAddr, grpcTLSCfg)
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init analysis catalog client")
-	}
-	analysisSystemClient, err := grpcsystem.NewClient(analysisAddr, grpcTLSCfg)
-	if err != nil {
-		zlogger.Fatal().Err(err).Msg("init analysis system client")
-	}
 	marketRepo := repomarket.NewPostgresRepository(qp)
 	marketService := appmarket.NewApplication(marketRepo)
 	marketHandler := markethandler.NewHandler(marketService)
 
-	analysisService, err := appanalysis.NewApplication(analysisClient, analysisCatalogClient, marketRepo, analysisSystemClient)
+	analysisService, err := appanalysis.NewApplication(analysisClient, marketRepo)
 	if err != nil {
 		zlogger.Fatal().Err(err).Msg("init analysis service")
 	}
 
-	systemRepo := reposystem.NewPostgresRepository(qp)
-	livePool := infraliverpool.NewPool(grpcTLSCfg)
-	liveApp := applive.NewApplication(livePool, systemRepo, marketRepo)
+	// --- Live ---
+
+	credKey := []byte(strings.TrimSpace(os.Getenv(envCredentialsKey)))
+	if len(credKey) == 0 {
+		zlogger.Fatal().Msg("CREDENTIALS_KEY is required")
+	}
+	encryptor := cryptox.NewEncryptor(credKey)
+
+	nodeRepo := repolive.NewPostgresNodeRepository(qp)
+	workerRepo := repolive.NewPostgresWorkerRepository(qp)
+	accountRepo := repolive.NewPostgresExchangeAccountRepository(qp, encryptor)
+
+	dockerTLSCfg, err := createDockerTLSConfig()
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init docker tls")
+	}
+
+	ghcrUser := strings.TrimSpace(os.Getenv(envGHCRUser))
+	ghcrToken := strings.TrimSpace(os.Getenv(envGHCRToken))
+	if ghcrToken == "" {
+		zlogger.Fatal().Msg("GHCR_TOKEN is required")
+	}
+	dockerAuthBase64 := base64.StdEncoding.EncodeToString([]byte(ghcrUser + ":" + ghcrToken))
+
+	liveImageURL := strings.TrimSpace(os.Getenv(envLiveImageURL))
+	if liveImageURL == "" {
+		zlogger.Fatal().Msg("LIVE_IMAGE_URL is required")
+	}
+	dockerDBImage := strings.TrimSpace(os.Getenv(envDockerDBImage))
+	if dockerDBImage == "" {
+		dockerDBImage = "timescale/timescaledb:latest-pg16"
+	}
+
+	dockerFactory := docker.NewClientFactory(docker.ClientFactoryConfig{
+		TLSConfig:  dockerTLSCfg,
+		AuthBase64: dockerAuthBase64,
+		LiveRefStr: liveImageURL,
+		DBRefStr:   dockerDBImage,
+	})
+
+	grpcClientFactory, err := grpclive.NewClientFactory(grpcTLSCfg)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init grpc live client factory")
+	}
+
+	grpcCACertPEM, err := os.ReadFile(os.Getenv(envGRPCCAFile))
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("read grpc ca cert")
+	}
+	grpcCAKeyPEM, err := os.ReadFile(os.Getenv(envGRPCCAKeyFile))
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("read grpc ca key")
+	}
+	certGenerator, err := certgen.NewGenerator(grpcCACertPEM, grpcCAKeyPEM)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init cert generator")
+	}
+
+	liveApp, err := applive.NewApplication(applive.ApplicationConfig{
+		AppName:             appName,
+		WorkerRepo:          workerRepo,
+		NodeRepo:            nodeRepo,
+		AccountRepo:         accountRepo,
+		MarketRepo:          marketRepo,
+		TxManager:           txManager,
+		EmailSender:         emailSender,
+		CertGenerator:       certGenerator,
+		DockerFactory:       dockerFactory,
+		WorkerClientFactory: grpcClientFactory,
+		Logger:              slogAdapter,
+	})
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init live app")
+	}
 
 	if errs := liveApp.LoadFromDB(ctx); len(errs) > 0 {
 		for _, e := range errs {
-			zlogger.Warn().Err(e).Msg("live pool: failed to restore service from db")
+			zlogger.Warn().Err(e).Msg("live: failed to restore client from db")
 		}
 	}
+
+	go liveApp.StartExpiringAccountsChecker(ctx)
+
+	// --- Handlers ---
 
 	authHandler, err := authhandler.NewHandler(authhandler.Config{
 		Application: authService,
@@ -239,6 +323,20 @@ func main() {
 }
 
 func createEmailSender(log *slog.Logger) (mailer.Sender, error) {
+	sender := strings.TrimSpace(os.Getenv(envSESSender))
+	if sender == "" {
+		return nil, fmt.Errorf("SES_SENDER is required")
+	}
+
+	sesClient, err := createSESClient(log)
+	if err != nil {
+		return nil, err
+	}
+
+	return awsses.NewClient(sesClient, sender)
+}
+
+func createSESClient(log *slog.Logger) (*sesv2.Client, error) {
 	accessKey := strings.TrimSpace(os.Getenv(envSESAccessKey))
 	if accessKey == "" {
 		return nil, fmt.Errorf("SES_ACCESS_KEY is required")
@@ -254,26 +352,60 @@ func createEmailSender(log *slog.Logger) (mailer.Sender, error) {
 		return nil, fmt.Errorf("SES_REGION is required")
 	}
 
+	opts := []func(*config.LoadOptions) error{
+		config.WithRegion(region),
+	}
+
 	baseEndpoint := strings.TrimSpace(os.Getenv(envSESBaseEndpoint))
-	if baseEndpoint == "" {
-		return nil, fmt.Errorf("SES_BASE_ENDPOINT is required")
+	if baseEndpoint != "" {
+		opts = append(opts, config.WithBaseEndpoint(baseEndpoint))
 	}
 
-	sender := strings.TrimSpace(os.Getenv(envSESSender))
-	if sender == "" {
-		return nil, fmt.Errorf("SES_SENDER is required")
+	opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")))
+
+	if log != nil {
+		opts = append(opts, config.WithLogger(awsses.NewAWSLogger(log)))
 	}
 
-	cfg := aws_ses.Config{
-		BaseEndpoint: baseEndpoint,
-		Region:       region,
-		AccessKey:    accessKey,
-		SecretKey:    secretKey,
-		Sender:       sender,
-		Logger:       log,
+	awsCfg, err := config.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("create ses client: %w", err)
 	}
 
-	return aws_ses.NewClient(cfg)
+	return sesv2.NewFromConfig(awsCfg), nil
+}
+
+func createDockerTLSConfig() (*tls.Config, error) {
+	caCert := []byte(strings.TrimSpace(os.Getenv(envDockerCACert)))
+	if len(caCert) == 0 {
+		return nil, fmt.Errorf("DOCKER_CA_CERT is required")
+	}
+
+	cert := []byte(strings.TrimSpace(os.Getenv(envDockerCert)))
+	if len(cert) == 0 {
+		return nil, fmt.Errorf("DOCKER_CERT is required")
+	}
+
+	key := []byte(strings.TrimSpace(os.Getenv(envDockerKey)))
+	if len(key) == 0 {
+		return nil, fmt.Errorf("DOCKER_KEY is required")
+	}
+
+	tlsCert, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		return nil, fmt.Errorf("docker tls: key pair: %w", err)
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("docker tls: failed to append CA cert")
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+		RootCAs:      pool,
+		MinVersion:   tls.VersionTLS13,
+	}, nil
 }
 
 func parseOrigins(raw string) []string {

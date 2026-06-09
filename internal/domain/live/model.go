@@ -17,19 +17,19 @@ type Run struct {
 	FinishedBy       *string
 }
 
-type ListRunsRequest struct {
+type RunsRequest struct {
 	Limit    int32
 	BeforeID *uuid.UUID
-	Filter   *ListRunsFilter
+	Filter   *RunsFilter
 }
 
-type ListRunsResponse struct {
+type RunsResponse struct {
 	Runs         []Run
 	NextBeforeID *uuid.UUID
 	HasMore      bool
 }
 
-type ListRunsFilter struct {
+type RunsFilter struct {
 	StatusCode   *corerun.StatusCode
 	Category     *string
 	Symbol       *string
@@ -38,19 +38,19 @@ type ListRunsFilter struct {
 	OrderDirAsc  *bool
 }
 
-type ListSignalsPagedRequest struct {
+type SignalsPagedRequest struct {
 	Limit    int32
 	BeforeID *uuid.UUID
-	Filter   *ListSignalsFilter
+	Filter   *SignalsFilter
 }
 
-type ListSignalsPagedResponse struct {
+type SignalsPagedResponse struct {
 	Signals      []detect.Signal
 	NextBeforeID *uuid.UUID
 	HasMore      bool
 }
 
-type ListSignalsFilter struct {
+type SignalsFilter struct {
 	RunID       *uuid.UUID
 	Category    *string
 	Symbol      *string
@@ -79,7 +79,3 @@ type SignalEvent struct {
 func (RunEvent) eventPayload()    {}
 func (SignalEvent) eventPayload() {}
 
-type Stream struct {
-	Events <-chan Event
-	Err    error
-}

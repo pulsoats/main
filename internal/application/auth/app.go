@@ -45,27 +45,28 @@ type ApplicationConfig struct {
 type ServiceConfig = ApplicationConfig
 
 func NewApplication(cfg ApplicationConfig) (*Application, error) {
+	const op = "auth app"
 	if cfg.Repository == nil {
-		return nil, fmt.Errorf("auth app:  auth repository: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s:  auth repository: %w", op, errorsx.ErrInvalidArgument)
 	}
 	if cfg.TxManager == nil {
-		return nil, fmt.Errorf("auth app: tx (transaction) manager: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: tx (transaction) manager: %w", op, errorsx.ErrInvalidArgument)
 	}
 	if cfg.EmailSender == nil {
-		return nil, fmt.Errorf("auth app: email sender: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: email sender: %w", op, errorsx.ErrInvalidArgument)
 	}
 	if cfg.TokenService == nil {
-		return nil, fmt.Errorf("auth app: token service: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: token service: %w", op, errorsx.ErrInvalidArgument)
 	}
 	baseURL := strings.TrimSpace(cfg.AppFrontendURL)
 	if baseURL == "" {
-		return nil, fmt.Errorf("auth app: app base url: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: app base url: %w", op, errorsx.ErrInvalidArgument)
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	appName := strings.TrimSpace(cfg.AppName)
 	if appName == "" {
-		return nil, fmt.Errorf("auth app: app name: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: app name: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	log := cfg.Logger
@@ -89,18 +90,19 @@ func NewService(cfg ServiceConfig) (*Application, error) {
 }
 
 func (a *Application) CreateInviteToken(ctx context.Context, userID uuid.UUID, role auth.UserRole) (auth.InviteToken, string, error) {
+	const op = "create invite token"
 	if role != auth.RoleAdmin {
-		return auth.InviteToken{}, "", fmt.Errorf("create invite token: %w", errorsx.ErrForbidden)
+		return auth.InviteToken{}, "", fmt.Errorf("%s: %w", op, errorsx.ErrForbidden)
 	}
 
 	tokenID, err := newUUID()
 	if err != nil {
-		return auth.InviteToken{}, "", fmt.Errorf("create invite token: %w", err)
+		return auth.InviteToken{}, "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	rawToken, err := a.tokenSvc.GenerateToken()
 	if err != nil {
-		return auth.InviteToken{}, "", fmt.Errorf("create invite token: generate token: %w", errors.Join(errorsx.ErrInternal, err))
+		return auth.InviteToken{}, "", fmt.Errorf("%s: generate token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	token := auth.InviteToken{
@@ -120,40 +122,43 @@ func (a *Application) CreateInviteToken(ctx context.Context, userID uuid.UUID, r
 }
 
 func (a *Application) RevokeInviteToken(ctx context.Context, userID, tokenID uuid.UUID, role auth.UserRole) error {
+	const op = "revoke invite token"
 	if role != auth.RoleAdmin {
-		return fmt.Errorf("revoke invite token: %w", errorsx.ErrForbidden)
+		return fmt.Errorf("%s: %w", op, errorsx.ErrForbidden)
 	}
 
 	if tokenID == uuid.Nil {
-		return fmt.Errorf("revoke invite token: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	if err := a.repo.RevokeInviteToken(ctx, tokenID); err != nil {
-		return fmt.Errorf("revoke invite token: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	return nil
 }
 
-func (a *Application) ListInviteTokens(ctx context.Context, userID uuid.UUID, role auth.UserRole) ([]auth.InviteToken, error) {
+func (a *Application) InviteTokens(ctx context.Context, userID uuid.UUID, role auth.UserRole) ([]auth.InviteToken, error) {
+	const op = "invite tokens"
 	if role != auth.RoleAdmin {
-		return nil, fmt.Errorf("list invite tokens: %w", errorsx.ErrForbidden)
+		return nil, fmt.Errorf("%s: %w", op, errorsx.ErrForbidden)
 	}
 
-	tokens, err := a.repo.ListInviteTokens(ctx)
+	tokens, err := a.repo.InviteTokens(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list invite tokens: %w", err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return tokens, nil
 }
 
 func (a *Application) Register(ctx context.Context, email, password, inviteToken string) error {
+	const op = "register"
 	if inviteToken == "" {
-		return fmt.Errorf("register: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	userID, idErr := newUUID()
 	if idErr != nil {
-		return fmt.Errorf("register: %w", idErr)
+		return fmt.Errorf("%s: %w", op, idErr)
 	}
 
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -161,12 +166,12 @@ func (a *Application) Register(ctx context.Context, email, password, inviteToken
 
 	passwordHash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
-		return fmt.Errorf("register: create password hash: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: create password hash: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	rawVerificationToken, err := a.tokenSvc.GenerateToken()
 	if err != nil {
-		return fmt.Errorf("register: generate verification token: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: generate verification token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	verificationTokenHash := a.tokenSvc.HashToken(rawVerificationToken)
 
@@ -179,23 +184,23 @@ func (a *Application) Register(ctx context.Context, email, password, inviteToken
 	err = a.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		invite, err := a.repo.InviteTokenByHash(txCtx, inviteTokenHash)
 		if err != nil {
-			return fmt.Errorf("register: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if invite.UsedAt != nil {
-			return fmt.Errorf("register: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 		if invite.ExpiresAt.Before(time.Now()) {
-			return fmt.Errorf("register: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 
 		if err := a.repo.CreateUser(txCtx, &user); err != nil {
-			return fmt.Errorf("register: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		tokenID, err := newUUID()
 		if err != nil {
-			return fmt.Errorf("register: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		verificationToken := auth.EmailVerificationToken{
@@ -206,11 +211,11 @@ func (a *Application) Register(ctx context.Context, email, password, inviteToken
 		}
 
 		if err := a.repo.CreateEmailVerificationToken(txCtx, &verificationToken); err != nil {
-			return fmt.Errorf("register: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if err := a.repo.MarkInviteTokenUsed(txCtx, invite.ID, user.ID); err != nil {
-			return fmt.Errorf("register: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		return nil
@@ -220,34 +225,35 @@ func (a *Application) Register(ctx context.Context, email, password, inviteToken
 	}
 
 	if err = a.sendVerificationEmail(ctx, email, rawVerificationToken); err != nil {
-		return fmt.Errorf("register: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
 func (a *Application) VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error {
+	const op = "verify email by token"
 	tokenHash := a.tokenSvc.HashToken(emailVerificationToken)
 
 	err := a.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		token, err := a.repo.EmailVerificationTokenByHash(txCtx, tokenHash)
 		if err != nil {
-			return fmt.Errorf("verify email by token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if token.UsedAt != nil {
-			return fmt.Errorf("verify email by token: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 		if token.ExpiresAt.Before(time.Now()) {
-			return fmt.Errorf("verify email by token: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 
 		if err := a.repo.MarkEmailVerificationTokenUsed(txCtx, token.ID); err != nil {
-			return fmt.Errorf("verify email by token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if err := a.repo.MarkUserEmailVerified(txCtx, token.UserID); err != nil {
-			return fmt.Errorf("verify email by token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		return nil
@@ -260,38 +266,39 @@ func (a *Application) VerifyEmailByToken(ctx context.Context, emailVerificationT
 }
 
 func (a *Application) EnsureRoot(ctx context.Context, email, password string) error {
+	const op = "ensure root"
 	email = strings.ToLower(strings.TrimSpace(email))
 	password = strings.TrimSpace(password)
 	if email == "" || password == "" {
-		return fmt.Errorf("ensure root: credentials: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: credentials: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	userID, idErr := newUUID()
 	if idErr != nil {
-		return fmt.Errorf("ensure root: %w", idErr)
+		return fmt.Errorf("%s: %w", op, idErr)
 	}
 
 	existing, err := a.repo.UserByEmail(ctx, email)
 	if err == nil {
 		if existing.Role != auth.RoleAdmin {
 			if err := a.repo.SetUserRole(ctx, existing.ID, auth.RoleAdmin); err != nil {
-				return fmt.Errorf("ensure root: set role: %w", err)
+				return fmt.Errorf("%s: set role: %w", op, err)
 			}
 		}
 		return nil
 	}
 	if !errors.Is(err, errorsx.ErrNotFound) {
-		return fmt.Errorf("ensure root: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	passwordHash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
-		return fmt.Errorf("ensure root: create password hash: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: create password hash: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	rawVerificationToken, err := a.tokenSvc.GenerateToken()
 	if err != nil {
-		return fmt.Errorf("ensure root: generate verification token: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: generate verification token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	verificationTokenHash := a.tokenSvc.HashToken(rawVerificationToken)
 
@@ -304,12 +311,12 @@ func (a *Application) EnsureRoot(ctx context.Context, email, password string) er
 
 	err = a.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		if err := a.repo.CreateUser(txCtx, &user); err != nil {
-			return fmt.Errorf("ensure root: create user: %w", err)
+			return fmt.Errorf("%s: create user: %w", op, err)
 		}
 
 		tokenID, err := newUUID()
 		if err != nil {
-			return fmt.Errorf("ensure root: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		token := auth.EmailVerificationToken{
@@ -319,7 +326,7 @@ func (a *Application) EnsureRoot(ctx context.Context, email, password string) er
 			ExpiresAt: time.Now().Add(time.Hour),
 		}
 		if err := a.repo.CreateEmailVerificationToken(txCtx, &token); err != nil {
-			return fmt.Errorf("ensure root: create verification token: %w", err)
+			return fmt.Errorf("%s: create verification token: %w", op, err)
 		}
 		return nil
 	})
@@ -328,17 +335,18 @@ func (a *Application) EnsureRoot(ctx context.Context, email, password string) er
 	}
 
 	if err = a.sendVerificationEmail(ctx, email, rawVerificationToken); err != nil {
-		return fmt.Errorf("ensure root: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	return nil
 }
 
 func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp auth.LoginResponse, err error) {
+	const op = "login"
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
 	attemptID, genErr := newUUID()
 	if genErr != nil {
-		return auth.LoginResponse{}, fmt.Errorf("login: %w", genErr)
+		return auth.LoginResponse{}, fmt.Errorf("%s: %w", op, genErr)
 	}
 
 	attempt := auth.LoginAttempt{
@@ -366,7 +374,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 
 	sessionID, genErr = newUUID()
 	if genErr != nil {
-		return auth.LoginResponse{}, fmt.Errorf("login: %w", genErr)
+		return auth.LoginResponse{}, fmt.Errorf("%s: %w", op, genErr)
 	}
 
 	err = a.tx.WithinTx(ctx, func(txCtx context.Context) error {
@@ -377,7 +385,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 				attempt.Reason = &reason
 				return errorsx.ErrUnauthorized
 			}
-			return fmt.Errorf("login: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		userID = user.ID
@@ -402,7 +410,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 
 		matched, err := argon2id.ComparePasswordAndHash(input.Password, user.PasswordHash)
 		if err != nil {
-			return fmt.Errorf("login: compare password: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: compare password: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 		if !matched {
 			reason := "invalid_credentials"
@@ -412,7 +420,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 
 		rawRefreshToken, err = a.tokenSvc.GenerateToken()
 		if err != nil {
-			return fmt.Errorf("login: generate refresh token: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: generate refresh token: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 
 		session := auth.Session{
@@ -425,7 +433,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 		}
 
 		if err := a.repo.CreateSession(txCtx, &session); err != nil {
-			return fmt.Errorf("login: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 		sessionID = session.ID
 
@@ -443,7 +451,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 	if err != nil {
 		reason := "access_token_failed"
 		attempt.Reason = &reason
-		return auth.LoginResponse{}, fmt.Errorf("login: generate access token: %w", errors.Join(errorsx.ErrInternal, err))
+		return auth.LoginResponse{}, fmt.Errorf("%s: generate access token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	attempt.Success = true
@@ -455,38 +463,43 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 }
 
 func (a *Application) Logout(ctx context.Context, sessionID uuid.UUID) error {
+	const op = "logout"
 	if err := a.repo.RevokeSession(ctx, sessionID); err != nil {
-		return fmt.Errorf("logout: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
-func (a *Application) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
-	sessions, err := a.repo.ListActiveSessionsByUserID(ctx, userID)
+func (a *Application) ActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
+	const op = "active sessions"
+	sessions, err := a.repo.ActiveSessionsByUserID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("list active sessions: %w", err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return sessions, nil
 }
 
 func (a *Application) LogoutAll(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error {
+	const op = "logout all"
 	if err := a.repo.RevokeSessionsByUserExcept(ctx, userID, exceptedSessionID); err != nil {
-		return fmt.Errorf("logout all: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	return nil
 }
 
 func (a *Application) UserByID(ctx context.Context, userID uuid.UUID) (auth.User, error) {
+	const op = "user by id"
 	u, err := a.repo.UserByID(ctx, userID)
 	if err != nil {
-		return auth.User{}, fmt.Errorf("user by id: %w", err)
+		return auth.User{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return u, nil
 }
 
 func (a *Application) RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error) {
+	const op = "refresh token"
 	tokenHash := a.tokenSvc.HashToken(currentToken)
 
 	var (
@@ -499,7 +512,7 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 
 	newSessionID, err = newUUID()
 	if err != nil {
-		return auth.LoginResponse{}, fmt.Errorf("refresh token: %w", err)
+		return auth.LoginResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	err = a.tx.WithinTx(ctx, func(txCtx context.Context) error {
@@ -508,7 +521,7 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 			if errors.Is(err, errorsx.ErrNotFound) {
 				return errorsx.ErrUnauthorized
 			}
-			return fmt.Errorf("refresh token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if session.RevokedAt != nil {
@@ -520,19 +533,19 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 
 		user, err := a.repo.UserByID(txCtx, session.UserID)
 		if err != nil {
-			return fmt.Errorf("refresh token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		userID = user.ID
 		userRole = user.Role
 
 		if err := a.repo.RevokeSession(txCtx, session.ID); err != nil {
-			return fmt.Errorf("refresh token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		newRefreshToken, err = a.tokenSvc.GenerateToken()
 		if err != nil {
-			return fmt.Errorf("refresh token: generate token: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: generate token: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 
 		newSession := auth.Session{
@@ -545,7 +558,7 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 		}
 
 		if err := a.repo.CreateSession(txCtx, &newSession); err != nil {
-			return fmt.Errorf("refresh token: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 		newSessionID = newSession.ID
 
@@ -561,7 +574,7 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 		Role:      userRole,
 	})
 	if err != nil {
-		return auth.LoginResponse{}, fmt.Errorf("refresh token: generate access token: %w", errors.Join(errorsx.ErrInternal, err))
+		return auth.LoginResponse{}, fmt.Errorf("%s: generate access token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return auth.LoginResponse{
@@ -571,31 +584,32 @@ func (a *Application) RefreshToken(ctx context.Context, currentToken string) (au
 }
 
 func (a *Application) ChangePassword(ctx context.Context, input auth.ChangePasswordInput) error {
+	const op = "change password"
 	err := a.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		user, err := a.repo.UserByID(txCtx, input.UserID)
 		if err != nil {
-			return fmt.Errorf("change password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		matched, err := argon2id.ComparePasswordAndHash(input.CurrentPassword, user.PasswordHash)
 		if err != nil {
-			return fmt.Errorf("change password: compare password: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: compare password: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 		if !matched {
-			return fmt.Errorf("change password: %w", errorsx.ErrUnauthorized)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrUnauthorized)
 		}
 
 		newPasswordHash, err := argon2id.CreateHash(input.NewPassword, argon2id.DefaultParams)
 		if err != nil {
-			return fmt.Errorf("change password: create password hash: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: create password hash: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 
 		if err := a.repo.ChangePassword(txCtx, input.UserID, newPasswordHash); err != nil {
-			return fmt.Errorf("change password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if err := a.repo.RevokeSessionsByUserExcept(txCtx, input.UserID, input.CurrentSessionID); err != nil {
-			return fmt.Errorf("change password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		return nil
@@ -608,6 +622,7 @@ func (a *Application) ChangePassword(ctx context.Context, input auth.ChangePassw
 }
 
 func (a *Application) RequestPasswordReset(ctx context.Context, email string) error {
+	const op = "request password reset"
 	email = strings.TrimSpace(strings.ToLower(email))
 
 	var rawToken string
@@ -618,17 +633,17 @@ func (a *Application) RequestPasswordReset(ctx context.Context, email string) er
 			if errors.Is(err, errorsx.ErrNotFound) {
 				return nil
 			}
-			return fmt.Errorf("request password reset: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		rawToken, err = a.tokenSvc.GenerateToken()
 		if err != nil {
-			return fmt.Errorf("request password reset: generate token: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: generate token: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 
 		tokenID, err := newUUID()
 		if err != nil {
-			return fmt.Errorf("request password reset: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		token := &auth.PasswordResetToken{
@@ -639,7 +654,7 @@ func (a *Application) RequestPasswordReset(ctx context.Context, email string) er
 		}
 
 		if err := a.repo.CreatePasswordResetToken(txCtx, token); err != nil {
-			return fmt.Errorf("request password reset: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		return nil
@@ -653,43 +668,44 @@ func (a *Application) RequestPasswordReset(ctx context.Context, email string) er
 	}
 
 	if err = a.sendPasswordResetEmail(ctx, email, rawToken); err != nil {
-		return fmt.Errorf("request password reset: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
 func (a *Application) ResetPassword(ctx context.Context, resetPasswordToken string, newPassword string) error {
+	const op = "reset password"
 	tokenHash := a.tokenSvc.HashToken(resetPasswordToken)
 
 	err := a.tx.WithinTx(ctx, func(txCtx context.Context) error {
 		token, err := a.repo.PasswordResetTokenByHash(txCtx, tokenHash)
 		if err != nil {
-			return fmt.Errorf("reset password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if token.UsedAt != nil {
-			return fmt.Errorf("reset password: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 		if token.ExpiresAt.Before(time.Now()) {
-			return fmt.Errorf("reset password: %w", errorsx.ErrInvalidArgument)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrInvalidArgument)
 		}
 
 		newPasswordHash, err := argon2id.CreateHash(newPassword, argon2id.DefaultParams)
 		if err != nil {
-			return fmt.Errorf("reset password: create password hash: %w", errors.Join(errorsx.ErrInternal, err))
+			return fmt.Errorf("%s: create password hash: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 
 		if err := a.repo.ChangePassword(txCtx, token.UserID, newPasswordHash); err != nil {
-			return fmt.Errorf("reset password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if err := a.repo.MarkPasswordResetTokenUsed(txCtx, token.ID); err != nil {
-			return fmt.Errorf("reset password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if err := a.repo.RevokeSessionsByUser(txCtx, token.UserID); err != nil {
-			return fmt.Errorf("reset password: %w", err)
+			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		return nil
@@ -702,20 +718,22 @@ func (a *Application) ResetPassword(ctx context.Context, resetPasswordToken stri
 }
 
 func (a *Application) sendVerificationEmail(ctx context.Context, to, token string) error {
+	const op = "send verification email"
 	link := a.buildTokenLink("verify-email", token)
 	msg := templates.Verification(to, a.appName, link)
 	if err := a.emailSender.Send(ctx, msg); err != nil {
-		return fmt.Errorf("send verification email: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	a.logger.Info("verification email sent", "to", to)
 	return nil
 }
 
 func (a *Application) sendPasswordResetEmail(ctx context.Context, to, token string) error {
+	const op = "send password reset email"
 	link := a.buildTokenLink("reset-password", token)
 	msg := templates.PasswordReset(to, a.appName, link)
 	if err := a.emailSender.Send(ctx, msg); err != nil {
-		return fmt.Errorf("send password reset email: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	a.logger.Info("password reset email sent", "to", to)
 	return nil
@@ -727,9 +745,10 @@ func (a *Application) buildTokenLink(path, token string) string {
 }
 
 func newUUID() (uuid.UUID, error) {
+	const op = "generate uuid"
 	id, err := uuid.NewV7()
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("generate uuid: %w", err)
+		return uuid.Nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return id, nil
 }

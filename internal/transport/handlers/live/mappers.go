@@ -5,9 +5,53 @@ import (
 
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/main/internal/domain/live"
-	domainsystem "github.com/pulsoats/main/internal/domain/system"
 	"github.com/pulsoats/main/internal/transport/handlers/core"
 )
+
+func workerToResponse(w live.Worker) workerResponse {
+	return workerResponse{
+		ID:                w.ID,
+		NodeID:            w.NodeID,
+		Host:              w.Host,
+		GRPCPort:          w.GRPCPort,
+		ContainerID:       w.ContainerID,
+		ExchangeAccountID: w.ExchangeAccountID,
+		Status:            string(w.Status),
+		LastError:         w.LastError,
+		CreatedAt:         w.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func workersToResponse(workers []live.Worker) workersResponse {
+	res := make([]workerResponse, 0, len(workers))
+	for _, w := range workers {
+		res = append(res, workerToResponse(w))
+	}
+	return workersResponse{Workers: res}
+}
+
+func nodeToResponse(n live.Node) nodeResponse {
+	return nodeResponse{
+		ID:           n.ID,
+		Exchange:     n.Exchange,
+		Host:         n.Host,
+		DockerPort:   n.DockerPort,
+		Region:       n.Region,
+		MaxWorkers:   n.MaxWorkers,
+		WorkersCount: n.WorkersCount,
+		Status:       string(n.Status),
+		LastError:    n.LastError,
+		CreatedAt:    n.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func nodesToResponse(nodes []live.Node) nodesResponse {
+	res := make([]nodeResponse, 0, len(nodes))
+	for _, n := range nodes {
+		res = append(res, nodeToResponse(n))
+	}
+	return nodesResponse{Nodes: res}
+}
 
 func runToResponse(r live.Run) runResponse {
 	resp := runResponse{
@@ -23,7 +67,7 @@ func runToResponse(r live.Run) runResponse {
 	return resp
 }
 
-func listRunsToResponse(resp live.ListRunsResponse) listRunsResponse {
+func listRunsToResponse(resp live.RunsResponse) listRunsResponse {
 	runs := make([]runResponse, 0, len(resp.Runs))
 	for _, r := range resp.Runs {
 		runs = append(runs, runToResponse(r))
@@ -53,7 +97,7 @@ func signalToResponse(s detect.Signal) signalResponse {
 	}
 }
 
-func listSignalsToResponse(resp live.ListSignalsPagedResponse) listSignalsResponse {
+func listSignalsToResponse(resp live.SignalsPagedResponse) listSignalsResponse {
 	signals := make([]signalResponse, 0, len(resp.Signals))
 	for _, s := range resp.Signals {
 		signals = append(signals, signalToResponse(s))
@@ -65,10 +109,22 @@ func listSignalsToResponse(resp live.ListSignalsPagedResponse) listSignalsRespon
 	}
 }
 
-func servicesToResponse(services []domainsystem.Service) listServicesResponse {
-	result := make([]core.ServiceInfoResponse, 0, len(services))
-	for _, s := range services {
-		result = append(result, core.ServiceToResponse(s))
+func accountToResponse(a live.ExchangeAccount) exchangeAccountResponse {
+	return exchangeAccountResponse{
+		ID:        a.ID,
+		Exchange:  a.Exchange,
+		Name:      a.Name,
+		Email:     a.Email,
+		ExpiresAt: a.ExpiresAt.Format(time.RFC3339),
+		CreatedAt: a.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: a.UpdatedAt.Format(time.RFC3339),
 	}
-	return listServicesResponse{Services: result}
+}
+
+func accountsToResponse(accounts []live.ExchangeAccount) exchangeAccountsResponse {
+	res := make([]exchangeAccountResponse, 0, len(accounts))
+	for _, a := range accounts {
+		res = append(res, accountToResponse(a))
+	}
+	return exchangeAccountsResponse{Accounts: res}
 }

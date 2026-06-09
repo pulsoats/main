@@ -41,7 +41,7 @@ func (r *Repository) UpsertSymbols(ctx context.Context, exchange, category strin
 	return nil
 }
 
-func (r *Repository) ListSymbols(ctx context.Context, exchange, category string) ([]string, error) {
+func (r *Repository) Symbols(ctx context.Context, exchange, category string) ([]string, error) {
 	const query = `
 	SELECT symbol
 	FROM markets

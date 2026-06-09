@@ -10,6 +10,6 @@ type Suggestion struct {
 
 type Repository interface {
 	UpsertSymbols(ctx context.Context, exchange, category string, symbols []string) error
-	ListSymbols(ctx context.Context, exchange, category string) ([]string, error)
+	Symbols(ctx context.Context, exchange, category string) ([]string, error)
 	Suggest(ctx context.Context, exchange, query string, limit int) ([]Suggestion, error)
 }

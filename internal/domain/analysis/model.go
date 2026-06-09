@@ -34,13 +34,13 @@ const (
 	RunFilterAll         RunFilter = 3
 )
 
-type ListRunsPagedRequest struct {
+type RunsPagedRequest struct {
 	Limit    int32
 	BeforeID *uuid.UUID
 	Filter   RunFilter
 }
 
-type ListRunsPagedResponse struct {
+type RunsPagedResponse struct {
 	Runs         []Run
 	NextBeforeID *uuid.UUID
 	HasMore      bool

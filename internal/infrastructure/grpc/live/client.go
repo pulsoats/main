@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 
@@ -13,18 +14,16 @@ import (
 	catalogpb "github.com/pulsoats/contracts/gen/go/catalog/v1"
 	corepb "github.com/pulsoats/contracts/gen/go/core/v1"
 	livepb "github.com/pulsoats/contracts/gen/go/live/v1"
-	systempb "github.com/pulsoats/contracts/gen/go/system/v1"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/core/market"
-	coresystem "github.com/pulsoats/core/system"
-	coregrpc "github.com/pulsoats/main/internal/adapters/grpc/core"
-	grpcsystem "github.com/pulsoats/main/internal/adapters/grpc/system"
 	"github.com/pulsoats/main/internal/domain/live"
+	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -32,50 +31,63 @@ import (
 type Client struct {
 	live    livepb.LiveClient
 	catalog catalogpb.CatalogClient
-	monitor systempb.ServiceMonitorClient
+	health  grpc_health_v1.HealthClient
 }
 
 func NewClient(addr string, tlsCfg *tls.Config) (*Client, error) {
+	const op = "live client"
 	if strings.TrimSpace(addr) == "" {
-		return nil, fmt.Errorf("live client: addr: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: addr: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("live client: addr: %w", errorsx.ErrInvalidArgument)
+		return nil, fmt.Errorf("%s: addr: %w", op, errorsx.ErrInvalidArgument)
 	}
 
-	cred := credentials.TransportCredentials(insecure.NewCredentials())
+	cred := insecure.NewCredentials()
 	if tlsCfg != nil {
 		cred = credentials.NewTLS(tlsCfg)
 	}
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(cred))
 	if err != nil {
-		return nil, fmt.Errorf("live client: %w", errors.Join(errorsx.ErrInternal, err))
+		return nil, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return &Client{
 		live:    livepb.NewLiveClient(conn),
 		catalog: catalogpb.NewCatalogClient(conn),
-		monitor: systempb.NewServiceMonitorClient(conn),
+		health:  grpc_health_v1.NewHealthClient(conn),
 	}, nil
 }
 
+func (c *Client) HealthCheck(ctx context.Context) error {
+	resp, err := c.health.Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+	if err != nil {
+		return err
+	}
+	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+		return fmt.Errorf("not serving: %s", resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) NewRun(ctx context.Context, market market.Spec, interval string, detector detect.DetectorConfig, callerID uuid.UUID) (live.Run, error) {
+	const op = "new run"
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
 	resp, err := c.live.NewRun(ctx, &livepb.NewRunRequest{
-		Market:   coregrpc.MarketSpecToProto(market),
+		Market:   core.MarketSpecToProto(market),
 		Interval: interval,
-		Detector: coregrpc.DetectorConfigToProto(detector),
+		Detector: core.DetectorConfigToProto(detector),
 	})
 	if err != nil {
-		return live.Run{}, coregrpc.MapError(err)
+		return live.Run{}, core.MapError(err)
 	}
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("new run: %w", errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return r, nil
@@ -85,54 +97,55 @@ func (c *Client) StopRun(ctx context.Context, runID uuid.UUID, callerID uuid.UUI
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
 	_, err := c.live.StopRun(ctx, &corepb.RunID{RunId: runID.String()})
-	return coregrpc.MapError(err)
+	return core.MapError(err)
 }
 
-func (c *Client) StopAll(ctx context.Context, callerID uuid.UUID) error {
+func (c *Client) StopAllRuns(ctx context.Context, callerID uuid.UUID) error {
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
 	_, err := c.live.StopAll(ctx, &emptypb.Empty{})
-	return coregrpc.MapError(err)
+	return core.MapError(err)
 }
 
 func (c *Client) RestartRun(ctx context.Context, runID uuid.UUID, callerID uuid.UUID) (live.Run, error) {
+	const op = "restart run"
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
 	resp, err := c.live.RestartRun(ctx, &corepb.RunID{RunId: runID.String()})
 	if err != nil {
-		return live.Run{}, coregrpc.MapError(err)
+		return live.Run{}, core.MapError(err)
 	}
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("restart run: %w", errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return r, nil
 }
 
 func (c *Client) GetRun(ctx context.Context, runID uuid.UUID) (live.Run, error) {
+	const op = "get run"
 	resp, err := c.live.GetRun(ctx, &corepb.RunID{RunId: runID.String()})
 	if err != nil {
-		return live.Run{}, coregrpc.MapError(err)
+		return live.Run{}, core.MapError(err)
 	}
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("get run: %w", errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return r, nil
 }
 
-func (c *Client) StreamEvents(ctx context.Context) (*live.Stream, error) {
+func (c *Client) StreamEvents(ctx context.Context) (<-chan live.Event, error) {
 	grpcStream, err := c.live.StreamEvents(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, coregrpc.MapError(err)
+		return nil, core.MapError(err)
 	}
 
 	ch := make(chan live.Event, 64)
-	s := &live.Stream{Events: ch}
 
 	go func() {
 		defer close(ch)
@@ -140,13 +153,13 @@ func (c *Client) StreamEvents(ctx context.Context) (*live.Stream, error) {
 			pb, err := grpcStream.Recv()
 			if err != nil {
 				if !errors.Is(err, io.EOF) && ctx.Err() == nil {
-					s.Err = coregrpc.MapError(err)
+					slog.Error("stream events: recv", "error", err)
 				}
 				return
 			}
 			event, err := eventFromProto(pb)
 			if err != nil {
-				s.Err = errors.Join(errorsx.ErrInternal, err)
+				slog.Error("stream events: parse event", "error", err)
 				return
 			}
 			select {
@@ -157,54 +170,57 @@ func (c *Client) StreamEvents(ctx context.Context) (*live.Stream, error) {
 		}
 	}()
 
-	return s, nil
+	return ch, nil
 }
 
-func (c *Client) ListRunsPaged(ctx context.Context, req live.ListRunsRequest) (live.ListRunsResponse, error) {
+func (c *Client) RunsPaged(ctx context.Context, req live.RunsRequest) (live.RunsResponse, error) {
+	const op = "runs paged"
 	pbReq := listRunsRequestToProto(req)
 	pbResp, err := c.live.ListRunsPaged(ctx, pbReq)
 	if err != nil {
-		return live.ListRunsResponse{}, coregrpc.MapError(err)
+		return live.RunsResponse{}, core.MapError(err)
 	}
 
 	resp, err := listRunsResponseFromProto(pbResp)
 	if err != nil {
-		return live.ListRunsResponse{}, fmt.Errorf("list runs paged: %w", errors.Join(errorsx.ErrInternal, err))
+		return live.RunsResponse{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return resp, nil
 }
 
-func (c *Client) ListSignalsPaged(ctx context.Context, req live.ListSignalsPagedRequest) (live.ListSignalsPagedResponse, error) {
+func (c *Client) SignalsPaged(ctx context.Context, req live.SignalsPagedRequest) (live.SignalsPagedResponse, error) {
+	const op = "signals paged"
 	pbReq := listSignalsRequestToProto(req)
 	pbResp, err := c.live.ListSignalsPaged(ctx, pbReq)
 	if err != nil {
-		return live.ListSignalsPagedResponse{}, fmt.Errorf("list signals paged: %w", coregrpc.MapError(err))
+		return live.SignalsPagedResponse{}, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
 	resp, err := listSignalsResponseFromProto(pbResp)
 	if err != nil {
-		return live.ListSignalsPagedResponse{}, fmt.Errorf("list signals paged: %w", errors.Join(errorsx.ErrInternal, err))
+		return live.SignalsPagedResponse{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return resp, nil
 }
 
-func (c *Client) ListAvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+	const op = "available detectors"
 	resp, err := c.catalog.ListAvailableDetectors(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("list available detectors: %w", coregrpc.MapError(err))
+		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
 	if resp == nil {
-		return nil, fmt.Errorf("list available detectors: resp is nil: %w", errorsx.ErrInternal)
+		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	result := make([]detect.DetectorMeta, 0, len(resp.Detectors))
 	for _, pb := range resp.Detectors {
-		meta, ok := coregrpc.DetectorMetaFromProto(pb)
+		meta, ok := core.DetectorMetaFromProto(pb)
 		if !ok {
-			return nil, fmt.Errorf("list available detectors: nil entry: %w", errorsx.ErrInternal)
+			return nil, fmt.Errorf("%s: nil entry: %w", op, errorsx.ErrInternal)
 		}
 		result = append(result, meta)
 	}
@@ -212,52 +228,25 @@ func (c *Client) ListAvailableDetectors(ctx context.Context) ([]detect.DetectorM
 	return result, nil
 }
 
-func (c *Client) ListAvailableExchanges(ctx context.Context) ([]exchange.Meta, error) {
+func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error) {
+	const op = "available exchanges"
 	resp, err := c.catalog.ListAvailableExchanges(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("list available exchanges: %w", coregrpc.MapError(err))
+		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
 	if resp == nil {
-		return nil, fmt.Errorf("list available exchanges: resp is nil: %w", errorsx.ErrInternal)
+		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	result := make([]exchange.Meta, 0, len(resp.ExchangeMetas))
 	for _, pb := range resp.ExchangeMetas {
-		meta, err := coregrpc.ExchangeMetaFromProto(pb)
+		meta, err := core.ExchangeMetaFromProto(pb)
 		if err != nil {
-			return nil, fmt.Errorf("list available exchanges: %w", errorsx.ErrInternal)
+			return nil, fmt.Errorf("%s: %w", op, errorsx.ErrInternal)
 		}
 		result = append(result, meta)
 	}
 
 	return result, nil
-}
-
-func (c *Client) Info(ctx context.Context) (coresystem.ServiceInfo, error) {
-	resp, err := c.monitor.Info(ctx, &emptypb.Empty{})
-	if err != nil {
-		return coresystem.ServiceInfo{}, fmt.Errorf("info: %w", coregrpc.MapError(err))
-	}
-
-	info, err := grpcsystem.ServiceInfoFromProto(resp)
-	if err != nil {
-		return coresystem.ServiceInfo{}, fmt.Errorf("info: %w: %w", errorsx.ErrInternal, err)
-	}
-
-	return info, nil
-}
-
-func (c *Client) Metrics(ctx context.Context) (coresystem.ServiceMetrics, error) {
-	resp, err := c.monitor.Metrics(ctx, &emptypb.Empty{})
-	if err != nil {
-		return coresystem.ServiceMetrics{}, fmt.Errorf("metrics: %w", coregrpc.MapError(err))
-	}
-
-	metrics, err := grpcsystem.ServiceMetricsFromProto(resp)
-	if err != nil {
-		return coresystem.ServiceMetrics{}, fmt.Errorf("metrics: %w: %w", errorsx.ErrInternal, err)
-	}
-
-	return metrics, nil
 }

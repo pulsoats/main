@@ -22,6 +22,7 @@ func NewPostgresRepository(qp postgres.QuerierProvider) *Repository {
 }
 
 func (r *Repository) CreateInviteToken(ctx context.Context, token auth.InviteToken) error {
+	const op = "create invite token"
 	const query = `
 	INSERT INTO auth.invite_tokens (id, token_hash, created_by, expires_at)
 	VALUES ($1, $2, $3, $4);
@@ -34,16 +35,17 @@ func (r *Repository) CreateInviteToken(ctx context.Context, token auth.InviteTok
 		var pgErr *pgconn.PgError
 
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return fmt.Errorf("create invite token: %w", errorsx.ErrNotFound)
+			return fmt.Errorf("%s: %w", op, errorsx.ErrNotFound)
 		}
 
-		return fmt.Errorf("create invite token: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
 	return nil
 }
 
 func (r *Repository) InviteTokenByHash(ctx context.Context, tokenHash string) (auth.InviteToken, error) {
+	const op = "invite token by hash"
 	const query = `
 	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
 	FROM auth.invite_tokens
@@ -63,14 +65,15 @@ func (r *Repository) InviteTokenByHash(ctx context.Context, tokenHash string) (a
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w", errorsx.ErrNotFound)
+			return auth.InviteToken{}, fmt.Errorf("%s: %w", op, errorsx.ErrNotFound)
 		}
-		return auth.InviteToken{}, fmt.Errorf("invite token by hash: %w", errors.Join(errorsx.ErrInternal, err))
+		return auth.InviteToken{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	return token, nil
 }
 
-func (r *Repository) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, error) {
+func (r *Repository) InviteTokens(ctx context.Context) ([]auth.InviteToken, error) {
+	const op = "list invite tokens"
 	const query = `
 	SELECT id, token_hash, created_by, expires_at, used_by, used_at, created_at
 	FROM auth.invite_tokens
@@ -81,7 +84,7 @@ func (r *Repository) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, 
 
 	rows, err := q.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("list invite tokens: %w", errors.Join(errorsx.ErrInternal, err))
+		return nil, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	defer rows.Close()
 
@@ -97,7 +100,7 @@ func (r *Repository) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, 
 			&token.CreatedAt,
 		)
 		if err != nil {
-			return auth.InviteToken{}, fmt.Errorf("list invite tokens: %w", errors.Join(errorsx.ErrInternal, err))
+			return auth.InviteToken{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 		return token, nil
 	})
@@ -109,6 +112,7 @@ func (r *Repository) ListInviteTokens(ctx context.Context) ([]auth.InviteToken, 
 }
 
 func (r *Repository) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	const op = "mark invite token used"
 	const query = `
 	UPDATE auth.invite_tokens
 	SET used_by = $2,
@@ -120,15 +124,16 @@ func (r *Repository) MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, user
 
 	tag, err := q.Exec(ctx, query, id, userID)
 	if err != nil {
-		return fmt.Errorf("mark invite token used: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("mark invite token used: %w", errorsx.ErrNotFound)
+		return fmt.Errorf("%s: %w", op, errorsx.ErrNotFound)
 	}
 	return nil
 }
 
 func (r *Repository) RevokeInviteToken(ctx context.Context, id uuid.UUID) error {
+	const op = "revoke invite token"
 	const query = `
 	DELETE FROM auth.invite_tokens
 	WHERE id = $1 AND used_by IS NULL AND used_at IS NULL;
@@ -137,10 +142,10 @@ func (r *Repository) RevokeInviteToken(ctx context.Context, id uuid.UUID) error 
 	q := r.qp.Get(ctx)
 	tag, err := q.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("revoke invite token: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("revoke invite token: %w", errorsx.ErrNotFound)
+		return fmt.Errorf("%s: %w", op, errorsx.ErrNotFound)
 	}
 	return nil
 }
@@ -407,7 +412,7 @@ func (r *Repository) SessionByRefreshTokenHash(ctx context.Context, refreshToken
 	return s, nil
 }
 
-func (r *Repository) ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
+func (r *Repository) ActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error) {
 	const query = `
 	SELECT id, user_id, refresh_token_hash, user_agent, ip_address::text, expires_at, revoked_at, created_at
 	FROM auth.user_sessions

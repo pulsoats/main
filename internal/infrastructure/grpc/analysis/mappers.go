@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
-	"github.com/pulsoats/main/internal/adapters/grpc/core"
 	"github.com/pulsoats/main/internal/domain/analysis"
+	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -42,16 +42,16 @@ func runFromProto(pb *analysispb.Run) (analysis.Run, error) {
 	return out, nil
 }
 
-func listRunsResponseFromProto(pb *analysispb.ListRunsResponse) (analysis.ListRunsPagedResponse, error) {
+func listRunsResponseFromProto(pb *analysispb.ListRunsResponse) (analysis.RunsPagedResponse, error) {
 	if pb == nil {
-		return analysis.ListRunsPagedResponse{}, fmt.Errorf("resp is nil")
+		return analysis.RunsPagedResponse{}, fmt.Errorf("resp is nil")
 	}
 
 	runs := make([]analysis.Run, 0, len(pb.Runs))
 	for i, r := range pb.GetRuns() {
 		mapped, err := runFromProto(r)
 		if err != nil {
-			return analysis.ListRunsPagedResponse{}, fmt.Errorf("analysis list runs response.runs[%d]: %w", i, err)
+			return analysis.RunsPagedResponse{}, fmt.Errorf("analysis list runs response.runs[%d]: %w", i, err)
 		}
 		runs = append(runs, mapped)
 	}
@@ -60,12 +60,12 @@ func listRunsResponseFromProto(pb *analysispb.ListRunsResponse) (analysis.ListRu
 	if pb.NextBeforeId != nil {
 		id, err := uuid.Parse(*pb.NextBeforeId)
 		if err != nil {
-			return analysis.ListRunsPagedResponse{}, fmt.Errorf("invalid next before id: %w", err)
+			return analysis.RunsPagedResponse{}, fmt.Errorf("invalid next before id: %w", err)
 		}
 		nextBeforeID = &id
 	}
 
-	resp := analysis.ListRunsPagedResponse{
+	resp := analysis.RunsPagedResponse{
 		Runs:         runs,
 		HasMore:      pb.HasMore,
 		NextBeforeID: nextBeforeID,
