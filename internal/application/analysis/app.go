@@ -10,55 +10,33 @@ import (
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
-	coresystem "github.com/pulsoats/core/system"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/domain/market"
+	grpcanalysis "github.com/pulsoats/main/internal/infrastructure/grpc/analysis"
 )
 
-type runClient interface {
-	NewRun(ctx context.Context, callerID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error)
-	RunByID(ctx context.Context, runID uuid.UUID) (analysis.Run, error)
-	StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error
-	ShareRun(ctx context.Context, callerID, runID uuid.UUID) error
-	DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error
-	ListRunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.ListRunsPagedRequest) (analysis.ListRunsPagedResponse, error)
-}
-
-type catalogClient interface {
-	ListAvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error)
-	ListAvailableExchanges(ctx context.Context) ([]exchange.Meta, error)
-}
-
-type monitorClient interface {
-	Info(ctx context.Context) (coresystem.ServiceInfo, error)
-	Metrics(ctx context.Context) (coresystem.ServiceMetrics, error)
-}
-
 type Application struct {
-	runClient     runClient
-	catalogClient catalogClient
-	marketRepo    market.Repository
-	monitor       monitorClient
+	client     *grpcanalysis.Client
+	marketRepo market.Repository
 }
 
-func NewApplication(runClient runClient, catalogClient catalogClient, marketRepo market.Repository, monitor monitorClient) (*Application, error) {
-	if runClient == nil {
-		return nil, fmt.Errorf("analysis app: run client is nil")
+func NewApplication(client *grpcanalysis.Client, marketRepo market.Repository) (*Application, error) {
+	const op = "analysis app"
+	if client == nil {
+		return nil, fmt.Errorf("%s: client is nil", op)
 	}
-	if catalogClient == nil {
-		return nil, fmt.Errorf("analysis app: catalog client is nil")
-	}
-	return &Application{runClient: runClient, catalogClient: catalogClient, marketRepo: marketRepo, monitor: monitor}, nil
+	return &Application{client: client, marketRepo: marketRepo}, nil
 }
 
 func (a *Application) NewRun(ctx context.Context, callerID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error) {
+	const op = "new run"
 	if err := validateNewRunRequest(req); err != nil {
 		return analysis.Run{}, err
 	}
 
-	resp, err := a.runClient.NewRun(ctx, callerID, req)
+	resp, err := a.client.NewRun(ctx, callerID, req)
 	if err != nil {
-		return analysis.Run{}, fmt.Errorf("new run: client: %w", err)
+		return analysis.Run{}, fmt.Errorf("%s: client: %w", op, err)
 	}
 
 	_ = a.marketRepo.UpsertSymbols(ctx, req.Market.Exchange, req.Market.Category, []string{req.Market.Symbol})
@@ -67,27 +45,95 @@ func (a *Application) NewRun(ctx context.Context, callerID uuid.UUID, req analys
 }
 
 func (a *Application) RunByID(ctx context.Context, runID uuid.UUID) (analysis.Run, error) {
-	resp, err := a.runClient.RunByID(ctx, runID)
+	const op = "run by id"
+	resp, err := a.client.RunByID(ctx, runID)
 	if err != nil {
-		return analysis.Run{}, fmt.Errorf("run by id: client: %w", err)
+		return analysis.Run{}, fmt.Errorf("%s: client: %w", op, err)
 	}
 	return resp, nil
 }
 
 func (a *Application) StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error {
-	return a.runClient.StreamRunArchive(ctx, runID, dst)
+	return a.client.StreamRunArchive(ctx, runID, dst)
 }
 
 func (a *Application) ShareRun(ctx context.Context, callerID, runID uuid.UUID) error {
-	if err := a.runClient.ShareRun(ctx, callerID, runID); err != nil {
-		return fmt.Errorf("share run: client: %w", err)
+	const op = "share run"
+	if err := a.client.ShareRun(ctx, callerID, runID); err != nil {
+		return fmt.Errorf("%s: client: %w", op, err)
 	}
 	return nil
 }
 
 func (a *Application) DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error {
-	if err := a.runClient.DeleteRun(ctx, callerID, runID); err != nil {
-		return fmt.Errorf("delete run: client: %w", err)
+	const op = "delete run"
+	if err := a.client.DeleteRun(ctx, callerID, runID); err != nil {
+		return fmt.Errorf("%s: client: %w", op, err)
+	}
+	return nil
+}
+
+func (a *Application) RunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.RunsPagedRequest) (analysis.RunsPagedResponse, error) {
+	const op = "runs paged"
+	if req.Limit <= 0 {
+		return analysis.RunsPagedResponse{}, fmt.Errorf("limit: %w", errorsx.ErrInvalidArgument)
+	}
+	resp, err := a.client.RunsPaged(ctx, callerID, req)
+	if err != nil {
+		return analysis.RunsPagedResponse{}, fmt.Errorf("%s: client: %w", op, err)
+	}
+	return resp, nil
+}
+
+func (a *Application) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error) {
+	const op = "available exchanges"
+	resp, err := a.client.AvailableExchanges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return resp, nil
+}
+
+func (a *Application) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+	const op = "available detectors"
+	resp, err := a.client.AvailableDetectors(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return resp, nil
+}
+
+func ParseRunFilter(raw string) (analysis.RunFilter, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "mine":
+		return analysis.RunFilterMine, nil
+	case "shared":
+		return analysis.RunFilterShared, nil
+	case "all":
+		return analysis.RunFilterAll, nil
+	default:
+		return analysis.RunFilterUnspecified, fmt.Errorf("filter: %w", errorsx.ErrInvalidArgument)
+	}
+}
+
+func validateNewRunRequest(req analysis.NewRunRequest) error {
+	if strings.TrimSpace(req.Market.Exchange) == "" {
+		return fmt.Errorf("market.exchange: %w", errorsx.ErrInvalidArgument)
+	}
+	if strings.TrimSpace(req.Market.Category) == "" {
+		return fmt.Errorf("market.category: %w", errorsx.ErrInvalidArgument)
+	}
+	if strings.TrimSpace(req.Market.Symbol) == "" {
+		return fmt.Errorf("market.symbol: %w", errorsx.ErrInvalidArgument)
+	}
+	if strings.TrimSpace(req.Interval) == "" {
+		return fmt.Errorf("interval: %w", errorsx.ErrInvalidArgument)
+	}
+	if strings.TrimSpace(req.Detector.Code) == "" {
+		return fmt.Errorf("detector.code: %w", errorsx.ErrInvalidArgument)
+	}
+	if req.From.IsZero() || req.To.IsZero() {
+		return fmt.Errorf("from/to: %w", errorsx.ErrInvalidArgument)
 	}
 	return nil
 }

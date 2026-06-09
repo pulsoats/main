@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS workers;
+DROP TABLE IF EXISTS nodes;
+DROP TABLE IF EXISTS exchange_accounts;

@@ -20,12 +20,14 @@ type MarketSpecResponse struct {
 
 type DetectorConfigRequest struct {
 	Code      string          `json:"code" binding:"required"`
+	Version   string          `json:"version"`
 	OptsLabel string          `json:"optsLabel"`
 	Opts      json.RawMessage `json:"opts"`
 }
 
 type DetectorConfigResponse struct {
 	Code      string          `json:"code"`
+	Version   string          `json:"version"`
 	OptsLabel string          `json:"optsLabel"`
 	Opts      json.RawMessage `json:"opts"`
 }
@@ -38,7 +40,7 @@ type DetectorMetaResponse struct {
 	OptsSchema  json.RawMessage `json:"optsSchema"`
 }
 
-type ListAvailableDetectorsResponse struct {
+type AvailableDetectorsResponse struct {
 	Detectors []DetectorMetaResponse `json:"detectors"`
 }
 
@@ -48,8 +50,20 @@ type ExchangeMetaResponse struct {
 	Intervals  []string `json:"intervals"`
 }
 
-type ListAvailableExchangesResponse struct {
+type AvailableExchangesResponse struct {
 	Exchanges []ExchangeMetaResponse `json:"exchanges"`
+}
+
+type ServiceInfoResponse struct {
+	ID         uuid.UUID `json:"id"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	Exchange   string `json:"exchange"`
+	Account    string `json:"account"`
+	Version    string `json:"version"`
+	Addr       string `json:"addr,omitempty"`
+	LastSeenAt string `json:"lastSeenAt,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
 }
 
 type RunStatusResponse struct {
@@ -68,24 +82,4 @@ type BaseRunResponse struct {
 	SignalsCount    int                    `json:"signalsCount"`
 	CreatedBy       string                 `json:"createdBy"`
 	CreatedAt       string                 `json:"createdAt"`
-}
-
-type ServiceInfoResponse struct {
-	ID         uuid.UUID `json:"id"`
-	Kind       string    `json:"kind"`
-	Addr       string    `json:"address"`
-	Name       string    `json:"name"`
-	Exchange   string    `json:"exchange"`
-	Account    string    `json:"account"`
-	Version    string    `json:"version"`
-	LastSeenAt string    `json:"lastSeenAt"`
-	CreatedAt  string    `json:"createdAt"`
-}
-
-type ServiceMetricsResponse struct {
-	Status        string  `json:"status"`
-	CpuPercent    float64 `json:"cpuPercent"`
-	MemoryPercent float64 `json:"memoryPercent"`
-	UptimeSeconds string  `json:"uptimeSeconds"`
-	ReportedAt    string  `json:"reportedAt"`
 }

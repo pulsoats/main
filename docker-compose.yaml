@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-pulsoats}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB:       ${POSTGRES_DB:-pulsoats}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulsoats}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   migrate:
     image: migrate/migrate:v4.17.1
     profiles: ["tools"]
@@ -9,7 +27,35 @@ services:
       - -path=/migrations
       - -database=${POSTGRES_DSN}
       - up
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: "no"
+
+  vault-agent:
+    image: hashicorp/vault:latest
+    entrypoint:
+      - sh
+      - -c
+      - |
+        printf '%s' "$$VAULT_ROLE_ID"   > /vault/auth/role-id
+        printf '%s' "$$VAULT_SECRET_ID" > /vault/auth/secret-id
+        exec vault agent -config=/vault/config/agent.hcl
+    environment:
+      VAULT_ADDR:      ${VAULT_ADDR}
+      VAULT_ROLE_ID:   ${VAULT_ROLE_ID}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID}
+    volumes:
+      - ./vault/config:/vault/config:ro
+      - vault_auth:/vault/auth
+      - certs:/run/certs
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/certs/cert.pem && test -s /run/certs/key.pem && test -s /run/certs/ca.pem"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
 
   main:
     build:
@@ -17,11 +63,21 @@ services:
       secrets:
         - github_token
     env_file: .env
-    environment:
-      GRPC_TLS_DISABLE: "true"
     ports:
       - "${HTTP_ADDR:-8080}:8080"
+    volumes:
+      - certs:/run/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault-agent:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  postgres_data:
+  vault_auth:
+  certs:
 
 secrets:
   github_token:

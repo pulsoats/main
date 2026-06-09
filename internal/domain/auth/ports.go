@@ -10,7 +10,7 @@ import (
 type Repository interface {
 	CreateInviteToken(ctx context.Context, token InviteToken) error
 	InviteTokenByHash(ctx context.Context, tokenHash string) (InviteToken, error)
-	ListInviteTokens(ctx context.Context) ([]InviteToken, error)
+	InviteTokens(ctx context.Context) ([]InviteToken, error)
 	MarkInviteTokenUsed(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	RevokeInviteToken(ctx context.Context, id uuid.UUID) error
 
@@ -31,7 +31,7 @@ type Repository interface {
 
 	CreateSession(ctx context.Context, session *Session) error
 	SessionByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
-	ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error)
+	ActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Session, error)
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	RevokeSessionsByUser(ctx context.Context, userID uuid.UUID) error
 	RevokeSessionsByUserExcept(ctx context.Context, userID uuid.UUID, exceptedSessionID uuid.UUID) error

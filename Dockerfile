@@ -46,8 +46,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 \
     GOOS=${TARGETOS} \
     GOARCH=${TARGETARCH} \
-    go build -o /workspace/bin/pulsoats-main ./cmd; \
-    rm -f /root/.netrc
+    go build -o /workspace/bin/pulsoats-main ./cmd
 
 ########################
 # Runtime

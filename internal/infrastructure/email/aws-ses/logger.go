@@ -11,6 +11,10 @@ type awsLogger struct {
 	log *slog.Logger
 }
 
+func NewAWSLogger(log *slog.Logger) awsLogger {
+	return awsLogger{log: log}
+}
+
 func (l awsLogger) Logf(class logging.Classification, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
 	if class == logging.Warn {

@@ -1,172 +1,162 @@
 openapi: 3.0.3
 info:
   title: PulsoATS API
-  version: 1.0.0
+  version: 2.0.0
 servers:
   - url: https://api.pulsoats.com
 tags:
   - name: auth
   - name: market
   - name: analysis
-  - name: live
+  - name: accounts
+  - name: workers
+  - name: nodes
+  - name: runs
+  - name: signals
+
 paths:
   # ─── Auth ───────────────────────────────────────────────────────────────────
   /auth/register:
     post:
-      summary: Регистрация пользователя
-      description: Создаёт аккаунт по инвайт-токену и отправляет письмо для подтверждения email.
+      summary: Регистрация
       tags: [auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
       responses:
-        '201': {description: Пользователь зарегистрирован}
+        '201': {description: Зарегистрирован}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/login:
     post:
       summary: Вход
-      description: Проверяет учётные данные и выдаёт пару access/refresh токенов.
       tags: [auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
+            schema: {$ref: '#/components/schemas/LoginRequest'}
       responses:
         '200':
           description: Токены выданы
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenPair'
+              schema: {$ref: '#/components/schemas/TokenPair'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/refresh:
     post:
       summary: Обновление токенов
-      description: Обменивает refresh-токен на новую пару access/refresh.
       tags: [auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
+            schema: {$ref: '#/components/schemas/RefreshTokenRequest'}
       responses:
         '200':
           description: Токены обновлены
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TokenPair'
+              schema: {$ref: '#/components/schemas/TokenPair'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/verify:
     get:
       summary: Подтверждение email
-      description: Подтверждает почту пользователя по токену из письма.
       tags: [auth]
       parameters:
-        - in: query
-          name: token
-          required: true
-          schema: {type: string}
+        - {in: query, name: token, required: true, schema: {type: string}}
       responses:
         '204': {description: Почта подтверждена}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/password/reset/request:
     post:
       summary: Запрос сброса пароля
-      description: Отправляет письмо со ссылкой на смену пароля, если указанный email существует.
       tags: [auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/PasswordResetEmailRequest'
+            schema: {$ref: '#/components/schemas/PasswordResetEmailRequest'}
       responses:
         '200': {description: Письмо отправлено}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/password/reset:
     post:
       summary: Сброс пароля
-      description: Меняет пароль по токену из письма и отзывает активные сессии.
       tags: [auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ResetPasswordRequest'
+            schema: {$ref: '#/components/schemas/ResetPasswordRequest'}
       responses:
         '200': {description: Пароль обновлён}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/password/change:
     post:
       summary: Смена пароля
-      description: Меняет пароль текущего пользователя и отзывает остальные сессии.
       tags: [auth]
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ChangePasswordRequest'
+            schema: {$ref: '#/components/schemas/ChangePasswordRequest'}
       responses:
         '200': {description: Пароль изменён}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/sessions:
     get:
       summary: Активные сессии
-      description: Возвращает список активных сессий текущего пользователя.
       tags: [auth]
       security: [{bearerAuth: []}]
       responses:
         '200':
-          description: Список активных сессий
+          description: Список сессий
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: '#/components/schemas/SessionResponse'
+                items: {$ref: '#/components/schemas/SessionResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/sessions/{session_id}:
     delete:
       summary: Завершить сессию
-      description: Отзывает указанную сессию пользователя по её идентификатору.
       tags: [auth]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/SessionID'}
+      parameters: [{$ref: '#/components/parameters/SessionID'}]
       responses:
         '204': {description: Сессия завершена}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/profile:
     get:
-      summary: Профиль пользователя
-      description: Возвращает информацию о текущем пользователе.
+      summary: Профиль
       tags: [auth]
       security: [{bearerAuth: []}]
       responses:
@@ -174,10 +164,10 @@ paths:
           description: Профиль пользователя
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/UserProfile'
+              schema: {$ref: '#/components/schemas/UserProfile'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/logout:
     delete:
       summary: Выход из текущей сессии
@@ -187,13 +177,14 @@ paths:
         '204': {description: Выход выполнен}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /auth/logout-all:
     delete:
       summary: Выход из всех сессий
       tags: [auth]
       security: [{bearerAuth: []}]
       responses:
-        '204': {description: Остальные сессии отозваны}
+        '204': {description: Все сессии отозваны}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
 
@@ -208,8 +199,7 @@ paths:
           description: Инвайт создан
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/CreateInviteTokenResponse'
+              schema: {$ref: '#/components/schemas/CreateInviteTokenResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
@@ -224,47 +214,131 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: '#/components/schemas/InviteToken'
+                items: {$ref: '#/components/schemas/InviteToken'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /admin/invite-tokens/{token_id}:
     delete:
       summary: Отозвать инвайт-токен
       tags: [auth]
       security: [{bearerAuth: []}]
       parameters:
-        - in: path
-          name: token_id
-          required: true
-          schema: {type: string, format: uuid}
+        - {in: path, name: token_id, required: true, schema: {type: string, format: uuid}}
       responses:
         '204': {description: Инвайт отозван}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  # ─── Admin / Nodes ───────────────────────────────────────────────────────────
+  /admin/nodes:
+    post:
+      summary: Добавить ноду
+      description: Разворачивает TimescaleDB на удалённом Docker-хосте и регистрирует ноду. Асинхронно — возвращает 202, статус отслеживать через GET /admin/nodes/{node_id}.
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateNodeRequest'}
+      responses:
+        '202':
+          description: Развёртывание запущено
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Node'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    get:
+      summary: Список нод
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      parameters:
+        - {in: query, name: exchange, schema: {type: string}, description: Фильтр по бирже.}
+      responses:
+        '200':
+          description: Список нод
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodesResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /admin/nodes/{node_id}:
+    get:
+      summary: Нода по ID
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/NodeID'}]
+      responses:
+        '200':
+          description: Данные ноды
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Node'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      summary: Удалить ноду
+      description: Нода должна быть в статусе `disabled`.
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/NodeID'}]
+      responses:
+        '204': {description: Нода удалена}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /admin/nodes/{node_id}/disable:
+    post:
+      summary: Отключить ноду
+      description: Асинхронно — останавливает все воркеры и ноду. Статус `disabling` → `disabled`.
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/NodeID'}]
+      responses:
+        '202': {description: Отключение запущено}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /admin/nodes/{node_id}/enable:
+    post:
+      summary: Включить ноду
+      description: Переподключается к Docker-хосту и перезапускает остановленные воркеры.
+      tags: [nodes]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/NodeID'}]
+      responses:
+        '204': {description: Нода включена}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
 
   # ─── Market ─────────────────────────────────────────────────────────────────
   /market/symbols:
     get:
       summary: Список символов
-      description: Возвращает инструменты для выбранной биржи и категории.
       tags: [market]
       security: [{bearerAuth: []}]
       parameters:
-        - in: query
-          name: exchange
-          required: true
-          schema: {type: string}
-          description: Код биржи (например, bybit).
-        - in: query
-          name: category
-          required: true
-          schema: {type: string}
-          description: Категория инструментов (например, linear).
+        - {in: query, name: exchange, required: true, schema: {type: string}}
+        - {in: query, name: category, required: true, schema: {type: string}}
       responses:
         '200':
           description: Список инструментов
@@ -273,33 +347,20 @@ paths:
               schema:
                 type: object
                 properties:
-                  symbols:
-                    type: array
-                    items: {type: string}
+                  symbols: {type: array, items: {type: string}}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /market/symbols/suggest:
     get:
       summary: Автодополнение символов
-      description: Возвращает список инструментов, подходящих под поисковый запрос.
       tags: [market]
       security: [{bearerAuth: []}]
       parameters:
-        - in: query
-          name: exchange
-          required: true
-          schema: {type: string}
-          description: Код биржи.
-        - in: query
-          name: query
-          schema: {type: string}
-          description: Строка поиска (может быть пустой — вернёт первые N символов).
-        - in: query
-          name: limit
-          schema: {type: integer, minimum: 1, default: 20}
-          description: Максимальное количество результатов.
+        - {in: query, name: exchange, required: true, schema: {type: string}}
+        - {in: query, name: query, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
       responses:
         '200':
           description: Список подсказок
@@ -310,157 +371,93 @@ paths:
                 properties:
                   suggestions:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/MarketSpec'
+                    items: {$ref: '#/components/schemas/MarketSpec'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
 
   # ─── Analysis ───────────────────────────────────────────────────────────────
-  /analysis/info:
-    get:
-      summary: Информация о сервисе анализа
-      tags: [analysis]
-      security: [{bearerAuth: []}]
-      responses:
-        '200':
-          description: Метаданные сервиса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceInfo'
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '500': {$ref: '#/components/responses/InternalError'}
-  /analysis/metrics:
-    get:
-      summary: Метрики сервиса анализа
-      tags: [analysis]
-      security: [{bearerAuth: []}]
-      responses:
-        '200':
-          description: Текущие метрики сервиса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceMetrics'
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '500': {$ref: '#/components/responses/InternalError'}
   /analysis/runs:
     get:
       summary: Список прогонов
       description: |
-        Возвращает постраничный список аналитических прогонов.
-
-        **Фильтрация** управляется параметром `filter`:
-        - `mine` *(по умолчанию)* — только прогоны текущего пользователя
-        - `shared` — прогоны, расшаренные другими пользователями
-        - `all` — все прогоны
-
-        **Пагинация** курсорная: передайте `beforeId` из поля `nextBeforeId` предыдущего ответа для следующей страницы.
+        Курсорная пагинация. Фильтр `filter`:
+        - `mine` *(по умолчанию)* — прогоны текущего пользователя
+        - `shared` — расшаренные другими
+        - `all` — все
       tags: [analysis]
       security: [{bearerAuth: []}]
       parameters:
-        - in: query
-          name: filter
-          schema:
-            type: string
-            enum: [mine, shared, all]
-            default: mine
-        - in: query
-          name: limit
-          schema: {type: integer, minimum: 1, default: 20}
-        - in: query
-          name: beforeId
-          schema: {type: string, format: uuid}
-          description: Курсор пагинации из поля `nextBeforeId` предыдущего ответа.
+        - {in: query, name: filter, schema: {type: string, enum: [mine, shared, all], default: mine}}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
+        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
       responses:
         '200':
           description: Страница прогонов
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/AnalysisListRunsResponse'
+              schema: {$ref: '#/components/schemas/AnalysisRunsResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
       summary: Запустить прогон
-      description: Создаёт и запускает новый аналитический прогон.
       tags: [analysis]
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/AnalysisNewRunRequest'
+            schema: {$ref: '#/components/schemas/AnalysisNewRunRequest'}
       responses:
         '201':
           description: Прогон запущен
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/AnalysisRun'
+              schema: {$ref: '#/components/schemas/AnalysisRun'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /analysis/runs/{run_id}:
     get:
       summary: Прогон по ID
       tags: [analysis]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/RunID'}
+      parameters: [{$ref: '#/components/parameters/RunID'}]
       responses:
         '200':
           description: Данные прогона
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/AnalysisRun'
+              schema: {$ref: '#/components/schemas/AnalysisRun'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
     delete:
       summary: Удалить прогон
-      description: Удаляет прогон. Прогон должен принадлежать текущему пользователю.
       tags: [analysis]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/RunID'}
+      parameters: [{$ref: '#/components/parameters/RunID'}]
       responses:
         '204': {description: Прогон удалён}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /analysis/runs/{run_id}/stream:
     get:
       summary: SSE-стрим прогона
       description: |
-        Открывает Server-Sent Events соединение и отдаёт состояние прогона в реальном времени (опрос каждые 2 с).
-
-        **Формат событий:**
+        Server-Sent Events, опрос каждые 2 с.
         ```
         data: <AnalysisRun JSON>
-        ```
-        Финальное событие при завершении:
-        ```
-        data: <AnalysisRun JSON>
-
         event: done
-        ```
-        Ошибка gRPC:
-        ```
-        event: error
-        data: {"code":"internal","message":"..."}
+        data: <AnalysisRun JSON>
         ```
       tags: [analysis]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/RunID'}
+      parameters: [{$ref: '#/components/parameters/RunID'}]
       responses:
         '200':
           description: SSE-поток
@@ -468,16 +465,15 @@ paths:
             text/event-stream:
               schema: {type: string}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /analysis/runs/{run_id}/result:
     get:
-      summary: Скачать результат прогона
-      description: Возвращает ZIP-архив с результатами прогона.
+      summary: Скачать результат
       tags: [analysis]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/RunID'}
+      parameters: [{$ref: '#/components/parameters/RunID'}]
       responses:
         '200':
           description: ZIP-архив
@@ -486,16 +482,14 @@ paths:
               schema: {type: string, format: binary}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
+
   /analysis/runs/{run_id}/share:
     patch:
       summary: Расшарить прогон
-      description: Делает прогон видимым другим пользователям (filter=shared).
       tags: [analysis]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/RunID'}
+      parameters: [{$ref: '#/components/parameters/RunID'}]
       responses:
         '200':
           description: Прогон расшарен
@@ -504,115 +498,85 @@ paths:
               schema:
                 type: object
                 properties:
-                  shared: {type: boolean, example: true}
+                  shared: {type: boolean}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
 
-  # ─── Live ────────────────────────────────────────────────────────────────────
-  /live/services:
+  # ─── Accounts ───────────────────────────────────────────────────────────────
+  /accounts:
     get:
-      summary: Список live-сервисов
-      tags: [live]
+      summary: Список аккаунтов
+      tags: [accounts]
       security: [{bearerAuth: []}]
       responses:
         '200':
-          description: Список зарегистрированных сервисов
+          description: Список биржевых аккаунтов
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  services:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/ServiceInfo'
+              schema: {$ref: '#/components/schemas/AccountsResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '500': {$ref: '#/components/responses/InternalError'}
     post:
-      summary: Зарегистрировать live-сервис
-      description: Подключает новый live-сервис по gRPC-адресу. Только для администраторов.
-      tags: [live]
+      summary: Создать аккаунт
+      tags: [accounts]
       security: [{bearerAuth: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterServiceRequest'
+            schema: {$ref: '#/components/schemas/CreateAccountRequest'}
       responses:
-        '201':
-          description: Сервис зарегистрирован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceInfo'
+        '201': {description: Аккаунт создан}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}:
-    delete:
-      summary: Удалить live-сервис
-      description: Отключает сервис из пула. Только для администраторов.
-      tags: [live]
-      security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
-      responses:
-        '204': {description: Сервис удалён}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/info:
+
+  /accounts/{account_id}:
     get:
-      summary: Информация о сервисе
-      tags: [live]
+      summary: Аккаунт по ID
+      tags: [accounts]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
       responses:
         '200':
-          description: Метаданные сервиса
+          description: Данные аккаунта
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceInfo'
+              schema: {$ref: '#/components/schemas/Account'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/metrics:
-    get:
-      summary: Метрики сервиса
-      tags: [live]
+
+  /accounts/{account_id}/name:
+    patch:
+      summary: Переименовать аккаунт
+      tags: [accounts]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1}
       responses:
-        '200':
-          description: Текущие метрики сервиса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceMetrics'
+        '204': {description: Имя обновлено}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/catalog/exchanges:
+
+  /accounts/{account_id}/catalog/exchanges:
     get:
       summary: Доступные биржи
-      description: Возвращает биржи, поддерживаемые данным live-сервисом.
-      tags: [live]
+      tags: [accounts]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
       responses:
         '200':
           description: Список бирж
@@ -623,20 +587,17 @@ paths:
                 properties:
                   exchanges:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/ExchangeMeta'
+                    items: {$ref: '#/components/schemas/ExchangeMeta'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/catalog/detectors:
+
+  /accounts/{account_id}/catalog/detectors:
     get:
       summary: Доступные детекторы
-      description: Возвращает детекторы, поддерживаемые данным live-сервисом.
-      tags: [live]
+      tags: [accounts]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
       responses:
         '200':
           description: Список детекторов
@@ -647,198 +608,264 @@ paths:
                 properties:
                   detectors:
                     type: array
-                    items:
-                      $ref: '#/components/schemas/DetectorMeta'
+                    items: {$ref: '#/components/schemas/DetectorMeta'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/runs:
+
+  # ─── Workers ─────────────────────────────────────────────────────────────────
+  /workers:
     get:
-      summary: Список прогонов конкретного live-сервиса
-      tags: [live]
+      summary: Список воркеров
+      description: |
+        Параметры `exchange` и `node_id` взаимоисключающие.
+        Без параметров — все воркеры.
+      tags: [workers]
       security: [{bearerAuth: []}]
       parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
-        - in: query
-          name: limit
-          schema: {type: integer, minimum: 1, default: 20}
-        - in: query
-          name: beforeId
-          schema: {type: string, format: uuid}
-          description: Курсор пагинации из поля `nextBeforeId` предыдущего ответа.
-        - in: query
-          name: statusCode
-          schema: {type: integer}
-          description: Фильтр по коду статуса прогона.
-        - in: query
-          name: interval
-          schema: {type: string}
-          description: Фильтр по интервалу (например, 1h).
+        - {in: query, name: exchange, schema: {type: string}, description: Фильтр по бирже.}
+        - {in: query, name: node_id, schema: {type: string, format: uuid}, description: Фильтр по ноде.}
+      responses:
+        '200':
+          description: Список воркеров
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkersResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /accounts/{account_id}/worker:
+    get:
+      summary: Воркер аккаунта
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '200':
+          description: Данные воркера
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Worker'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      summary: Создать воркер
+      description: Разворачивает контейнер воркера на наименее загруженной ноде. Асинхронно — возвращает 202, статус отслеживать через GET.
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '202':
+          description: Развёртывание запущено
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Worker'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/InvalidInput'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      summary: Остановить воркер
+      description: Останавливает все прогоны и контейнер воркера.
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '204': {description: Воркер остановлен}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /accounts/{account_id}/worker/start:
+    post:
+      summary: Запустить остановленный воркер
+      description: Перезапускает существующий контейнер воркера. Асинхронно — возвращает 202.
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '202':
+          description: Запуск начат
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Worker'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /accounts/{account_id}/worker/metrics:
+    get:
+      summary: SSE-стрим метрик воркера
+      description: |
+        Server-Sent Events с метриками контейнера (CPU, память).
+        ```
+        event: metrics
+        data: <WorkerMetrics JSON>
+
+        event: done
+        data: {}
+        ```
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '200':
+          description: SSE-поток метрик
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  # ─── Runs ────────────────────────────────────────────────────────────────────
+  /accounts/{account_id}/runs:
+    get:
+      summary: Список прогонов аккаунта
+      tags: [runs]
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/AccountID'}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
+        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
       responses:
         '200':
           description: Страница прогонов
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/LiveListRunsResponse'
+              schema: {$ref: '#/components/schemas/LiveRunsResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      summary: Запустить прогон
+      tags: [runs]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LiveNewRunRequest'}
+      responses:
+        '201':
+          description: Прогон запущен
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LiveRun'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
     delete:
       summary: Остановить все прогоны
-      description: Останавливает все активные прогоны сервиса.
-      tags: [live]
+      tags: [runs]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
       responses:
         '204': {description: Все прогоны остановлены}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
-    post:
-      summary: Запустить live-прогон
-      tags: [live]
-      security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LiveNewRunRequest'
-      responses:
-        '201':
-          description: Прогон запущен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LiveRun'
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
-        '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/runs/{run_id}:
+
+  /accounts/{account_id}/runs/{run_id}:
     get:
-      summary: Live-прогон по ID
-      tags: [live]
+      summary: Прогон по ID
+      tags: [runs]
       security: [{bearerAuth: []}]
       parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+        - {$ref: '#/components/parameters/AccountID'}
         - {$ref: '#/components/parameters/RunID'}
       responses:
         '200':
           description: Данные прогона
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/LiveRun'
+              schema: {$ref: '#/components/schemas/LiveRun'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
     delete:
       summary: Остановить прогон
-      tags: [live]
+      tags: [runs]
       security: [{bearerAuth: []}]
       parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+        - {$ref: '#/components/parameters/AccountID'}
         - {$ref: '#/components/parameters/RunID'}
       responses:
         '204': {description: Прогон остановлен}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/runs/{run_id}/restart:
+
+  /accounts/{account_id}/runs/{run_id}/restart:
     post:
       summary: Перезапустить прогон
-      tags: [live]
+      tags: [runs]
       security: [{bearerAuth: []}]
       parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+        - {$ref: '#/components/parameters/AccountID'}
         - {$ref: '#/components/parameters/RunID'}
       responses:
         '200':
           description: Прогон перезапущен
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/LiveRun'
+              schema: {$ref: '#/components/schemas/LiveRun'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/signals:
+
+  # ─── Signals / Events ────────────────────────────────────────────────────────
+  /accounts/{account_id}/signals:
     get:
       summary: Список сигналов
-      description: Возвращает постраничный список сигналов сервиса. Можно фильтровать по прогону.
-      tags: [live]
+      description: Курсорная пагинация. Опционально фильтр по `runId`.
+      tags: [signals]
       security: [{bearerAuth: []}]
       parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
-        - in: query
-          name: limit
-          schema: {type: integer, minimum: 1, default: 50}
-        - in: query
-          name: beforeId
-          schema: {type: string, format: uuid}
-          description: Курсор пагинации из поля `nextBeforeId` предыдущего ответа.
-        - in: query
-          name: runId
-          schema: {type: string, format: uuid}
-          description: Фильтр по конкретному прогону.
+        - {$ref: '#/components/parameters/AccountID'}
+        - {in: query, name: limit, schema: {type: integer, default: 50}}
+        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
+        - {in: query, name: runId, schema: {type: string, format: uuid}}
       responses:
         '200':
           description: Страница сигналов
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/LiveListSignalsResponse'
+              schema: {$ref: '#/components/schemas/LiveSignalsResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-  /live/services/{exchange}/{account}/events:
+
+  /accounts/{account_id}/events:
     get:
-      summary: SSE-стрим событий сервиса
+      summary: SSE-стрим событий аккаунта
       description: |
-        Открывает Server-Sent Events соединение и отдаёт события прогонов и сигналов в реальном времени.
+        Server-Sent Events — прогоны и сигналы в реальном времени.
 
-        **Типы событий:**
-
-        Обновление прогона:
         ```
         event: run
         data: <LiveRun JSON>
-        ```
-        Новый сигнал:
-        ```
+
         event: signal
         data: <Signal JSON>
-        ```
-        Поток завершён:
-        ```
+
         event: done
         data: {}
         ```
-      tags: [live]
+
+        **Паттерн использования:** при открытии экрана сначала запрашивать последние N объектов через REST, затем подключаться к SSE. Клиентская фильтрация SSE-событий по активным фильтрам.
+      tags: [signals]
       security: [{bearerAuth: []}]
-      parameters:
-        - {$ref: '#/components/parameters/Exchange'}
-        - {$ref: '#/components/parameters/Account'}
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
       responses:
         '200':
-          description: SSE-поток событий
+          description: SSE-поток
           content:
             text/event-stream:
               schema: {type: string}
@@ -859,78 +886,53 @@ components:
       name: run_id
       required: true
       schema: {type: string, format: uuid}
-      description: UUID прогона.
     SessionID:
       in: path
       name: session_id
       required: true
       schema: {type: string, format: uuid}
-      description: UUID сессии.
-    Exchange:
+    AccountID:
       in: path
-      name: exchange
+      name: account_id
       required: true
-      schema: {type: string}
-      description: Код биржи (например, bybit).
-    Account:
+      schema: {type: string, format: uuid}
+    NodeID:
       in: path
-      name: account
+      name: node_id
       required: true
-      schema: {type: string}
-      description: Имя аккаунта на бирже.
+      schema: {type: string, format: uuid}
 
   responses:
     Unauthorized:
       description: Неавторизован
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: unauthorized
-            message: Unauthorized
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     Forbidden:
       description: Доступ запрещён
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     InvalidInput:
       description: Некорректный запрос
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: invalid_input
-            message: exchange is required
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     NotFound:
       description: Ресурс не найден
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: not_found
-            message: not_found
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     Conflict:
-      description: Конфликт данных (ресурс уже существует)
+      description: Конфликт (ресурс уже существует или неверный статус)
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: conflict
-            message: already exists
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     InternalError:
-      description: Внутренняя ошибка сервера
+      description: Внутренняя ошибка
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            code: internal
-            message: Internal server error
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
 
   schemas:
     ErrorResponse:
@@ -939,8 +941,7 @@ components:
         code:
           type: string
           enum: [invalid_input, unauthorized, forbidden, not_found, conflict, internal]
-        message:
-          type: string
+        message: {type: string}
 
     # ── Auth ────────────────────────────────────────────────────────────────
     RegisterRequest:
@@ -995,8 +996,7 @@ components:
     CreateInviteTokenResponse:
       type: object
       properties:
-        token:
-          $ref: '#/components/schemas/InviteToken'
+        token: {$ref: '#/components/schemas/InviteToken'}
         link: {type: string}
     SessionResponse:
       type: object
@@ -1048,168 +1048,196 @@ components:
         intervals: {type: array, items: {type: string}}
     RunStatus:
       type: object
-      description: |
-        | code | Описание                    |
-        |------|-----------------------------|
-        | 0    | unspecified                 |
-        | 1    | pending — в очереди         |
-        | 2    | running — выполняется       |
-        | 3    | done — успешно завершён     |
-        | 4    | failed — завершился с ошибкой |
       properties:
-        code:
-          type: integer
-          enum: [0, 1, 2, 3, 4]
-          example: 2
-        message:
-          type: string
-          description: Описание ошибки при code=4.
+        code: {type: integer, enum: [0, 1, 2, 3, 4], example: 2}
+        message: {type: string, description: Описание ошибки при code=4.}
     BaseRun:
       type: object
-      description: Общие поля прогона (присутствуют и в analysis, и в live).
       properties:
         id: {type: string, format: uuid}
-        status:
-          $ref: '#/components/schemas/RunStatus'
-        market:
-          $ref: '#/components/schemas/MarketSpec'
+        status: {$ref: '#/components/schemas/RunStatus'}
+        market: {$ref: '#/components/schemas/MarketSpec'}
         interval: {type: string, example: 1h}
         firstCandleTime: {type: string, format: date-time, nullable: true}
         lastCandleTime: {type: string, format: date-time, nullable: true}
-        detector:
-          $ref: '#/components/schemas/DetectorConfig'
+        detector: {$ref: '#/components/schemas/DetectorConfig'}
         signalsCount: {type: integer}
         createdBy: {type: string, format: uuid}
         createdAt: {type: string, format: date-time}
-    ServiceInfo:
+
+    # ── Nodes ───────────────────────────────────────────────────────────────
+    CreateNodeRequest:
+      type: object
+      required: [exchange, host, dockerPort, region, maxWorkers, dbUser, dbPassword]
+      properties:
+        exchange: {type: string, example: bybit}
+        host: {type: string, format: ipv4, example: 10.0.0.5}
+        dockerPort: {type: integer, example: 2376}
+        region: {type: string, example: eu-central-1}
+        maxWorkers: {type: integer, minimum: 1}
+        dbUser: {type: string}
+        dbPassword: {type: string, format: password}
+    Node:
       type: object
       properties:
         id: {type: string, format: uuid}
-        kind: {type: string}
-        address: {type: string, description: gRPC-адрес сервиса.}
-        name: {type: string}
         exchange: {type: string}
-        account: {type: string}
-        version: {type: string}
-        lastSeenAt: {type: string, format: date-time, nullable: true}
-        createdAt: {type: string, format: date-time, nullable: true}
-    ServiceMetrics:
-      type: object
-      properties:
+        host: {type: string}
+        dockerPort: {type: integer}
+        region: {type: string}
+        maxWorkers: {type: integer}
+        workersCount: {type: integer}
         status:
           type: string
-          enum: [ok, degraded, unknown]
+          enum: [deploying, active, disabled, disabling, failed, disconnected]
+        lastError: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+    NodesResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items: {$ref: '#/components/schemas/Node'}
+
+    # ── Accounts ────────────────────────────────────────────────────────────
+    CreateAccountRequest:
+      type: object
+      required: [exchange, name, credentials, expiresAt]
+      properties:
+        exchange: {type: string, example: bybit}
+        name: {type: string, example: Main Bybit}
+        credentials:
+          type: object
+          required: [apiKey]
+          properties:
+            apiKey: {type: string}
+            apiSecret: {type: string}
+            passphrase: {type: string}
+        expiresAt: {type: string, format: date-time}
+    Account:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        exchange: {type: string}
+        name: {type: string}
+        email: {type: string}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    AccountsResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items: {$ref: '#/components/schemas/Account'}
+
+    # ── Workers ─────────────────────────────────────────────────────────────
+    Worker:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        nodeId: {type: string, format: uuid}
+        exchangeAccountId: {type: string, format: uuid}
+        host: {type: string}
+        grpcPort: {type: integer}
+        containerId: {type: string}
+        status:
+          type: string
+          enum: [deploying, running, stopped, failed]
+        lastError: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+    WorkersResponse:
+      type: object
+      properties:
+        workers:
+          type: array
+          items: {$ref: '#/components/schemas/Worker'}
+    WorkerMetrics:
+      type: object
+      properties:
         cpuPercent: {type: number, format: float}
         memoryPercent: {type: number, format: float}
-        uptimeSeconds: {type: string, description: Строковое представление int64.}
-        reportedAt: {type: string, format: date-time}
+        memoryUsageBytes: {type: integer, format: int64}
+        uptimeSeconds: {type: integer, format: int64}
 
     # ── Analysis ────────────────────────────────────────────────────────────
     AnalysisNewRunRequest:
       type: object
       required: [market, interval, fromTime, toTime, detector]
       properties:
-        market:
-          $ref: '#/components/schemas/MarketSpec'
+        market: {$ref: '#/components/schemas/MarketSpec'}
         interval: {type: string, example: 1h}
         fromTime: {type: string, format: date-time}
         toTime: {type: string, format: date-time}
-        detector:
-          $ref: '#/components/schemas/DetectorConfig'
+        detector: {$ref: '#/components/schemas/DetectorConfig'}
         fees:
-          $ref: '#/components/schemas/TakerMakerFees'
-    TakerMakerFees:
-      type: object
-      properties:
-        takerFee: {type: number, format: float, example: 0.0005}
-        makerFee: {type: number, format: float, example: 0.0001}
+          type: object
+          properties:
+            takerFee: {type: number, format: float, example: 0.0005}
+            makerFee: {type: number, format: float, example: 0.0001}
     AnalysisRun:
       allOf:
-        - $ref: '#/components/schemas/BaseRun'
+        - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
-            avgProfitPercent:
-              type: number
-              format: float
-              description: Средняя прибыль по всем сигналам (0.0083 = 0.83%).
+            avgProfitPercent: {type: number, format: float}
             isShared: {type: boolean}
             sharedAt: {type: string, format: date-time, nullable: true}
-    AnalysisListRunsResponse:
+    AnalysisRunsResponse:
       type: object
       properties:
         runs:
           type: array
-          items:
-            $ref: '#/components/schemas/AnalysisRun'
-        nextBeforeId:
-          type: string
-          format: uuid
-          nullable: true
-          description: Курсор для следующей страницы.
+          items: {$ref: '#/components/schemas/AnalysisRun'}
+        nextBeforeId: {type: string, format: uuid, nullable: true}
         hasMore: {type: boolean}
 
     # ── Live ────────────────────────────────────────────────────────────────
-    RegisterServiceRequest:
-      type: object
-      required: [addr]
-      properties:
-        addr: {type: string, description: gRPC-адрес live-сервиса (host:port).}
     LiveNewRunRequest:
       type: object
       required: [market, interval, detector]
       properties:
-        market:
-          $ref: '#/components/schemas/MarketSpec'
+        market: {$ref: '#/components/schemas/MarketSpec'}
         interval: {type: string, example: 1h}
-        detector:
-          $ref: '#/components/schemas/DetectorConfig'
+        detector: {$ref: '#/components/schemas/DetectorConfig'}
     LiveRun:
       allOf:
-        - $ref: '#/components/schemas/BaseRun'
+        - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
             ordersCount: {type: integer, format: int64}
             sumProfitPercent: {type: number, format: float}
             finishedAt: {type: string, format: date-time, nullable: true}
-            finishedBy: {type: string, nullable: true, description: Кто завершил прогон (user ID или системная причина).}
-    LiveListRunsResponse:
+            finishedBy: {type: string, nullable: true}
+    LiveRunsResponse:
       type: object
       properties:
         runs:
           type: array
-          items:
-            $ref: '#/components/schemas/LiveRun'
-        nextBeforeId:
-          type: string
-          format: uuid
-          nullable: true
+          items: {$ref: '#/components/schemas/LiveRun'}
+        nextBeforeId: {type: string, format: uuid, nullable: true}
         hasMore: {type: boolean}
     Signal:
       type: object
       properties:
         id: {type: string, format: uuid}
         runId: {type: string, format: uuid}
-        market:
-          $ref: '#/components/schemas/MarketSpec'
+        market: {$ref: '#/components/schemas/MarketSpec'}
         detectorCode: {type: string}
         detectorOptsLabel: {type: string}
-        time: {type: integer, format: int64, description: Unix timestamp сигнала в миллисекундах.}
+        time: {type: integer, format: int64, description: Unix ms}
         value: {type: integer, format: int64}
         buyValue: {type: integer, format: int64}
         takeProfitValue: {type: integer, format: int64}
         stopLossValue: {type: integer, format: int64}
-        expectedReturnPpm: {type: integer, format: int64, description: Ожидаемая доходность в PPM (1 000 000 = 100%).}
+        expectedReturnPpm: {type: integer, format: int64, description: "Доходность в PPM (1 000 000 = 100%)"}
         fingerprint: {type: string, format: uuid}
-        createdAt: {type: integer, format: int64, description: Unix timestamp создания в миллисекундах.}
-    LiveListSignalsResponse:
+        createdAt: {type: integer, format: int64, description: Unix ms}
+    LiveSignalsResponse:
       type: object
       properties:
         signals:
           type: array
-          items:
-            $ref: '#/components/schemas/Signal'
-        nextBeforeId:
-          type: string
-          format: uuid
-          nullable: true
+          items: {$ref: '#/components/schemas/Signal'}
+        nextBeforeId: {type: string, format: uuid, nullable: true}
         hasMore: {type: boolean}

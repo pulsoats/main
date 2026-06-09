@@ -67,7 +67,7 @@ func (h *Handler) CreateInviteToken(c *gin.Context) {
 	})
 }
 
-func (h *Handler) ListInviteTokens(c *gin.Context) {
+func (h *Handler) InviteTokens(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
@@ -79,7 +79,7 @@ func (h *Handler) ListInviteTokens(c *gin.Context) {
 		return
 	}
 
-	tokens, err := h.app.ListInviteTokens(c.Request.Context(), userID, role)
+	tokens, err := h.app.InviteTokens(c.Request.Context(), userID, role)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -236,14 +236,14 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) ListActiveSessions(c *gin.Context) {
+func (h *Handler) ActiveSessions(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		errhttp.RespondError(c, errors.Join(errorsx.ErrInternal, errors.New("gin cotext: wrong user id")))
 		return
 	}
 
-	sessions, err := h.app.ListActiveSessionsByUserID(c.Request.Context(), userID)
+	sessions, err := h.app.ActiveSessionsByUserID(c.Request.Context(), userID)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return

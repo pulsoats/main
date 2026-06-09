@@ -7,6 +7,20 @@ import (
 )
 
 const (
+	accountExpiredEmailSubject = "[%s] Ключи аккаунта истекли"
+	accountExpiredEmailBody    = `Здравствуйте!
+
+Ключи API аккаунта "%s" (биржа: %s) истекли.
+
+Пожалуйста, обновите ключи в панели управления, чтобы восстановить работу.`
+
+	accountExpiryReminderEmailSubject = "[%s] Ключи аккаунта истекают через %d дней"
+	accountExpiryReminderEmailBody    = `Здравствуйте!
+
+Ключи API аккаунта "%s" (биржа: %s) истекают через %d дней.
+
+Обновите ключи заранее, чтобы не прерывать работу.`
+
 	verificationEmailSubject = "[%s] Подтверждение регистрации"
 	verificationEmailBody    = `Здравствуйте!
 
@@ -27,6 +41,24 @@ const (
 
 Если вы не запрашивали сброс, просто проигнорируйте это письмо.`
 )
+
+// AccountExpired builds a message notifying that API keys have expired.
+func AccountExpired(to, appName, accountName, exchange string) mailer.Message {
+	return mailer.Message{
+		To:      to,
+		Subject: fmt.Sprintf(accountExpiredEmailSubject, appName),
+		Text:    fmt.Sprintf(accountExpiredEmailBody, accountName, exchange),
+	}
+}
+
+// AccountExpiryReminder builds a reminder message that API keys are expiring soon.
+func AccountExpiryReminder(to, appName, accountName, exchange string, daysRemaining int) mailer.Message {
+	return mailer.Message{
+		To:      to,
+		Subject: fmt.Sprintf(accountExpiryReminderEmailSubject, appName, daysRemaining),
+		Text:    fmt.Sprintf(accountExpiryReminderEmailBody, accountName, exchange, daysRemaining),
+	}
+}
 
 // Verification builds a registration confirmation message.
 func Verification(to, appName, link string) mailer.Message {

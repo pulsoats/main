@@ -10,7 +10,7 @@ import (
 type app interface {
 	CreateInviteToken(ctx context.Context, userID uuid.UUID, role auth.UserRole) (auth.InviteToken, string, error)
 	RevokeInviteToken(ctx context.Context, userID uuid.UUID, tokenID uuid.UUID, role auth.UserRole) error
-	ListInviteTokens(ctx context.Context, userID uuid.UUID, role auth.UserRole) ([]auth.InviteToken, error)
+	InviteTokens(ctx context.Context, userID uuid.UUID, role auth.UserRole) ([]auth.InviteToken, error)
 
 	Register(ctx context.Context, email, password string, inviteToken string) error
 	VerifyEmailByToken(ctx context.Context, emailVerificationToken string) error
@@ -21,7 +21,7 @@ type app interface {
 
 	UserByID(ctx context.Context, id uuid.UUID) (auth.User, error)
 
-	ListActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
+	ActiveSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]auth.Session, error)
 
 	RefreshToken(ctx context.Context, currentToken string) (auth.LoginResponse, error)
 

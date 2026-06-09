@@ -6,10 +6,6 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"log/slog"
-
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/pulsoats/core/errorsx"
@@ -21,62 +17,26 @@ type Client struct {
 	sender string
 }
 
-type Config struct {
-	BaseEndpoint string
-	Region       string
-	AccessKey    string
-	SecretKey    string
-	Sender       string
-
-	Logger *slog.Logger
-}
-
-func NewClient(cfg Config) (mailer.Sender, error) {
-	if cfg.Region == "" {
-		return nil, fmt.Errorf("aws sesv2 client: region: %w", errorsx.ErrInvalidArgument)
+func NewClient(client *sesv2.Client, sender string) (mailer.Sender, error) {
+	if client == nil {
+		return nil, fmt.Errorf("aws sesv2 client is nil")
 	}
-	if cfg.Sender == "" {
-		return nil, fmt.Errorf("aws sesv2 client: sender address: %w", errorsx.ErrInvalidArgument)
+	if sender == "" {
+		return nil, fmt.Errorf("aws sesv2 client: sender address is empty")
 	}
-
-	opts := []func(*config.LoadOptions) error{
-		config.WithRegion(cfg.Region),
-	}
-	if cfg.BaseEndpoint != "" {
-		opts = append(opts, config.WithBaseEndpoint(cfg.BaseEndpoint))
-	}
-	if cfg.AccessKey != "" || cfg.SecretKey != "" {
-		if cfg.AccessKey == "" || cfg.SecretKey == "" {
-			return nil, fmt.Errorf("aws sesv2 client: credentials: %w", errorsx.ErrInvalidArgument)
-		}
-		opts = append(opts, config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")))
-	}
-	if cfg.Logger != nil {
-		opts = append(opts, config.WithLogger(awsLogger{log: cfg.Logger}))
-	}
-
-	awsCfg, err := config.LoadDefaultConfig(context.Background(), opts...)
-	if err != nil {
-		return nil, fmt.Errorf("aws sesv2 client: %w", errors.Join(errorsx.ErrInternal, err))
-	}
-
-	client := sesv2.NewFromConfig(awsCfg)
-
-	return &Client{
-		client: client,
-		sender: cfg.Sender,
-	}, nil
+	return &Client{client: client, sender: sender}, nil
 }
 
 func (s *Client) Send(ctx context.Context, msg mailer.Message) error {
+	const op = "aws sesv2 client"
 	if msg.To == "" {
-		return fmt.Errorf("aws sesv2 client: recipient: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: recipient: %w", op, errorsx.ErrInvalidArgument)
 	}
 	if msg.Subject == "" {
-		return fmt.Errorf("aws sesv2 client: subject: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: subject: %w", op, errorsx.ErrInvalidArgument)
 	}
 	if msg.Text == "" && msg.HTML == "" {
-		return fmt.Errorf("aws sesv2 client: body: %w", errorsx.ErrInvalidArgument)
+		return fmt.Errorf("%s: body: %w", op, errorsx.ErrInvalidArgument)
 	}
 
 	body := &types.Body{}
@@ -107,7 +67,7 @@ func (s *Client) Send(ctx context.Context, msg mailer.Message) error {
 	}
 
 	if _, err := s.client.SendEmail(ctx, input); err != nil {
-		return fmt.Errorf("aws sesv2 client: send email: %w", errors.Join(errorsx.ErrInternal, err))
+		return fmt.Errorf("%s: send email: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 	return nil
 }

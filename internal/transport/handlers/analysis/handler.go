@@ -16,7 +16,6 @@ import (
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
 	corerun "github.com/pulsoats/core/run"
-	coresystem "github.com/pulsoats/core/system"
 	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/transport/errhttp"
@@ -30,13 +29,10 @@ type app interface {
 	StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error
 	ShareRun(ctx context.Context, callerID, runID uuid.UUID) error
 	DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error
-	ListRunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.ListRunsPagedRequest) (analysis.ListRunsPagedResponse, error)
+	RunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.RunsPagedRequest) (analysis.RunsPagedResponse, error)
 
-	ListAvailableExchanges(ctx context.Context) ([]exchange.Meta, error)
-	ListAvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error)
-
-	Info(ctx context.Context) (coresystem.ServiceInfo, error)
-	Metrics(ctx context.Context) (coresystem.ServiceMetrics, error)
+	AvailableExchanges(ctx context.Context) ([]exchange.Meta, error)
+	AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error)
 }
 
 type Handler struct {
@@ -114,7 +110,7 @@ func (h *Handler) RunArchive(c *gin.Context) {
 	}
 }
 
-func (h *Handler) ListRuns(c *gin.Context) {
+func (h *Handler) Runs(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		errhttp.RespondError(c, errorsx.ErrInternal)
@@ -148,7 +144,7 @@ func (h *Handler) ListRuns(c *gin.Context) {
 		beforeID = &id
 	}
 
-	runs, err := h.app.ListRunsPaged(c.Request.Context(), userID, analysis.ListRunsPagedRequest{
+	runs, err := h.app.RunsPaged(c.Request.Context(), userID, analysis.RunsPagedRequest{
 		Limit:    limit,
 		BeforeID: beforeID,
 		Filter:   filter,
@@ -283,42 +279,23 @@ func (h *Handler) DeleteRun(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) ListAvailableExchanges(c *gin.Context) {
-	exchanges, err := h.app.ListAvailableExchanges(c.Request.Context())
+func (h *Handler) AvailableExchanges(c *gin.Context) {
+	exchanges, err := h.app.AvailableExchanges(c.Request.Context())
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, core.ListAvailableExchangesToResponse(exchanges))
+	c.JSON(http.StatusOK, core.AvailableExchangesToResponse(exchanges))
 }
 
-func (h *Handler) ListAvailableDetectors(c *gin.Context) {
-	exchanges, err := h.app.ListAvailableDetectors(c.Request.Context())
+func (h *Handler) AvailableDetectors(c *gin.Context) {
+	exchanges, err := h.app.AvailableDetectors(c.Request.Context())
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, core.ListAvailableDetectorsToResponse(exchanges))
+	c.JSON(http.StatusOK, core.AvailableDetectorsToResponse(exchanges))
 }
 
-func (h *Handler) Info(c *gin.Context) {
-	info, err := h.app.Info(c.Request.Context())
-	if err != nil {
-		errhttp.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, core.ServiceInfoToResponse(info))
-}
-
-func (h *Handler) Metrics(c *gin.Context) {
-	metrics, err := h.app.Metrics(c.Request.Context())
-	if err != nil {
-		errhttp.RespondError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, core.ServiceMetricsToResponse(metrics))
-}
