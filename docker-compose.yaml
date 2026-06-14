@@ -1,55 +1,24 @@
 services:
-  postgres:
-    image: timescale/timescaledb:latest-pg17
-    environment:
-      POSTGRES_USER:     ${POSTGRES_USER:-pulsoats}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB:       ${POSTGRES_DB:-pulsoats}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulsoats}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
-
-  migrate:
-    image: migrate/migrate:v4.17.1
-    profiles: ["tools"]
-    env_file: .env
-    volumes:
-      - ./migrations:/migrations:ro
-    command:
-      - -path=/migrations
-      - -database=${POSTGRES_DSN}
-      - up
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
   main:
     build:
       context: .
       secrets:
         - github_token
-    env_file: .env
-    ports:
-      - "${HTTP_ADDR:-8080}:8080"
-    volumes:
-      - ${CERTS_DIR:-./certs}:/run/certs:ro
+    container_name: pulsoats-main
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-
-secrets:
-  github_token:
-    environment: GITHUB_TOKEN
+      migrate-main:
+        condition: service_completed_successfully
+      migrate-analysis:
+        condition: service_completed_successfully
+      analysis:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${CERTS_DIR:-./certs}:/run/certs:ro
