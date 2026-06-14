@@ -3,7 +3,7 @@
 ########################
 # Builder
 ########################
-FROM golang:1.25 AS builder
+FROM golang:1.26.2 AS builder
 
 WORKDIR /workspace/main
 
