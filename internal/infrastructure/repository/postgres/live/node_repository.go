@@ -23,7 +23,7 @@ func NewPostgresNodeRepository(qp postgres.QuerierProvider) *NodeRepository {
 func (r *NodeRepository) CreateNode(ctx context.Context, s *live.Node) error {
 	const op = "create node"
 	const query = `
-	INSERT INTO nodes (id, exchange, host, docker_port, region, dsn, max_workers, status)
+	INSERT INTO nodes (id, name, exchange, host, docker_port, region, dsn, max_workers, status)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	RETURNING created_at;`
 
@@ -31,6 +31,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, s *live.Node) error {
 
 	err := q.QueryRow(ctx, query,
 		s.ID,
+		s.Name,
 		s.Exchange,
 		s.Host,
 		s.DockerPort,
@@ -49,7 +50,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, s *live.Node) error {
 func (r *NodeRepository) NodeByID(ctx context.Context, id uuid.UUID) (live.Node, error) {
 	const op = "node by id"
 	const query = `
-	SELECT n.id, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
+	SELECT n.id, n.Name, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
 	       n.status, n.last_error, n.created_at,
 	       COUNT(w.id) AS workers_count
 	FROM nodes n
@@ -62,6 +63,7 @@ func (r *NodeRepository) NodeByID(ctx context.Context, id uuid.UUID) (live.Node,
 	var s live.Node
 	err := q.QueryRow(ctx, query, id).Scan(
 		&s.ID,
+		&s.Name,
 		&s.Exchange,
 		&s.Host,
 		&s.DockerPort,
@@ -86,7 +88,7 @@ func (r *NodeRepository) NodeByID(ctx context.Context, id uuid.UUID) (live.Node,
 func (r *NodeRepository) Nodes(ctx context.Context) ([]live.Node, error) {
 	const op = "list nodes"
 	const query = `
-	SELECT n.id, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
+	SELECT n.id, n.Name, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
 	       n.status, n.last_error, n.created_at,
 	       COUNT(w.id) AS workers_count
 	FROM nodes n
@@ -105,6 +107,7 @@ func (r *NodeRepository) Nodes(ctx context.Context) ([]live.Node, error) {
 		var s live.Node
 		if err := row.Scan(
 			&s.ID,
+			&s.Name,
 			&s.Exchange,
 			&s.Host,
 			&s.DockerPort,
@@ -130,7 +133,7 @@ func (r *NodeRepository) Nodes(ctx context.Context) ([]live.Node, error) {
 func (r *NodeRepository) NodesByExchange(ctx context.Context, exchange string) ([]live.Node, error) {
 	const op = "list nodes by exchange"
 	const query = `
-	SELECT n.id, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
+	SELECT n.id, n.Name, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
 	       n.status, n.last_error, n.created_at,
 	       COUNT(w.id) AS workers_count
 	FROM nodes n
@@ -151,6 +154,7 @@ func (r *NodeRepository) NodesByExchange(ctx context.Context, exchange string) (
 		var s live.Node
 		if err := row.Scan(
 			&s.ID,
+			&s.Name,
 			&s.Exchange,
 			&s.Host,
 			&s.DockerPort,
@@ -176,7 +180,7 @@ func (r *NodeRepository) NodesByExchange(ctx context.Context, exchange string) (
 func (r *NodeRepository) LeastLoadedNodeByExchange(ctx context.Context, exchange string) (live.Node, error) {
 	const op = "least loaded node by exchange"
 	const query = `
-	SELECT n.id, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
+	SELECT n.id, n.Name, n.exchange, n.host, n.docker_port, n.region, n.dsn, n.max_workers,
 	       n.status, n.last_error, n.created_at,
 	       COUNT(w.id) AS workers_count
 	FROM nodes n
@@ -193,6 +197,7 @@ func (r *NodeRepository) LeastLoadedNodeByExchange(ctx context.Context, exchange
 	var n live.Node
 	err := q.QueryRow(ctx, query, exchange).Scan(
 		&n.ID,
+		&n.Name,
 		&n.Exchange,
 		&n.Host,
 		&n.DockerPort,

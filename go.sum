@@ -134,10 +134,10 @@ github.com/pelletier/go-toml/v2 v2.2.4/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/pulsoats/contracts v1.11.0 h1:SvXKHNUean2CWV65s8l+NqpekrP8+bDvdgQmIIeYJAA=
-github.com/pulsoats/contracts v1.11.0/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
-github.com/pulsoats/core v1.15.0 h1:W/WeGSmX0dZmdj12EYi42ABafAMOdbOfG48O17MfpoI=
-github.com/pulsoats/core v1.15.0/go.mod h1:6yUNEmr/1UyDDIKzeTo/80BjTYUdD3YK2OJK8hMGG5g=
+github.com/pulsoats/contracts v1.13.0 h1:kfmDP8fPDjMgc5TZNrD3VEUwVq/dLJ1zTrP4zvvQ2BY=
+github.com/pulsoats/contracts v1.13.0/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
+github.com/pulsoats/core v1.15.5 h1:rRsaPL979unBlfwQ8Y3HTfKYAfaEqplbQfReDyJN7ec=
+github.com/pulsoats/core v1.15.5/go.mod h1:6yUNEmr/1UyDDIKzeTo/80BjTYUdD3YK2OJK8hMGG5g=
 github.com/quic-go/qpack v0.6.0 h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=
 github.com/quic-go/qpack v0.6.0/go.mod h1:lUpLKChi8njB4ty2bFLX2x4gzDqXwUpaO1DP9qMDZII=
 github.com/quic-go/quic-go v0.59.0 h1:OLJkp1Mlm/aS7dpKgTc6cnpynnD2Xg7C1pwL6vy/SAw=

@@ -237,7 +237,10 @@ paths:
   /admin/nodes:
     post:
       summary: Добавить ноду
-      description: Разворачивает TimescaleDB на удалённом Docker-хосте и регистрирует ноду. Асинхронно — возвращает 202, статус отслеживать через GET /admin/nodes/{node_id}.
+      description: |
+        Регистрирует ноду и опционально разворачивает TimescaleDB на удалённом Docker-хосте.
+        Асинхронно — возвращает 202, статус отслеживать через `GET /admin/nodes/{node_id}`.
+        Если передан `dsn` — существующая БД используется как есть, деплой не выполняется.
       tags: [nodes]
       security: [{bearerAuth: []}]
       requestBody:
@@ -377,20 +380,73 @@ paths:
         '500': {$ref: '#/components/responses/InternalError'}
 
   # ─── Analysis ───────────────────────────────────────────────────────────────
+  /analysis/catalog/exchanges:
+    get:
+      summary: Доступные биржи (analysis)
+      tags: [analysis]
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Список бирж
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exchanges:
+                    type: array
+                    items: {$ref: '#/components/schemas/ExchangeMeta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /analysis/catalog/detectors:
+    get:
+      summary: Доступные детекторы (analysis)
+      tags: [analysis]
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Список детекторов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detectors:
+                    type: array
+                    items: {$ref: '#/components/schemas/DetectorMeta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
   /analysis/runs:
     get:
       summary: Список прогонов
       description: |
-        Курсорная пагинация. Фильтр `filter`:
-        - `mine` *(по умолчанию)* — прогоны текущего пользователя
-        - `shared` — расшаренные другими
-        - `all` — все
+        Курсорная пагинация. Область видимости задаётся параметром `scope`:
+        - `1` — прогоны текущего пользователя
+        - `2` — расшаренные другими
+        - `3` — все
       tags: [analysis]
       security: [{bearerAuth: []}]
       parameters:
-        - {in: query, name: filter, schema: {type: string, enum: [mine, shared, all], default: mine}}
+        - {in: query, name: scope, required: true, schema: {type: integer, enum: [1, 2, 3]}, description: "1=mine, 2=shared, 3=all"}
         - {in: query, name: limit, schema: {type: integer, default: 20}}
-        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
+        - {in: query, name: before_id, schema: {type: string, format: uuid}}
+        - {in: query, name: order_dir_asc, schema: {type: boolean}}
+        - {in: query, name: exchanges, schema: {type: array, items: {type: string}}}
+        - {in: query, name: categories, schema: {type: array, items: {type: string}}}
+        - {in: query, name: symbols, schema: {type: array, items: {type: string}}}
+        - {in: query, name: intervals, schema: {type: array, items: {type: string}}}
+        - {in: query, name: detector_codes, schema: {type: array, items: {type: string}}}
+        - {in: query, name: statuses, schema: {type: array, items: {type: integer}}}
+        - {in: query, name: min_signals, schema: {type: integer, format: int64}}
+        - {in: query, name: max_signals, schema: {type: integer, format: int64}}
+        - {in: query, name: min_avg_profit_pct, schema: {type: number, format: float}}
+        - {in: query, name: max_avg_profit_pct, schema: {type: number, format: float}}
+        - {in: query, name: first_candle_from, schema: {type: string, format: date-time}}
+        - {in: query, name: last_candle_to, schema: {type: string, format: date-time}}
+        - {in: query, name: created_from, schema: {type: string, format: date-time}}
+        - {in: query, name: created_to, schema: {type: string, format: date-time}}
       responses:
         '200':
           description: Страница прогонов
@@ -667,17 +723,6 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/InvalidInput'}
         '500': {$ref: '#/components/responses/InternalError'}
-    delete:
-      summary: Остановить воркер
-      description: Останавливает все прогоны и контейнер воркера.
-      tags: [workers]
-      security: [{bearerAuth: []}]
-      parameters: [{$ref: '#/components/parameters/AccountID'}]
-      responses:
-        '204': {description: Воркер остановлен}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '500': {$ref: '#/components/responses/InternalError'}
 
   /accounts/{account_id}/worker/start:
     post:
@@ -695,6 +740,19 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /accounts/{account_id}/worker/stop:
+    post:
+      summary: Остановить воркер
+      description: Останавливает все прогоны и контейнер воркера.
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '204': {description: Воркер остановлен}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
 
   /accounts/{account_id}/worker/metrics:
@@ -722,6 +780,31 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/InternalError'}
 
+  /accounts/{account_id}/worker/stats:
+    get:
+      summary: SSE-стрим статистики воркера
+      description: |
+        Server-Sent Events со статистикой прогонов в реальном времени (обновляется каждые 5 с).
+        ```
+        event: stats
+        data: <WorkerStats JSON>
+
+        event: done
+        data: {}
+        ```
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '200':
+          description: SSE-поток статистики
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
   # ─── Runs ────────────────────────────────────────────────────────────────────
   /accounts/{account_id}/runs:
     get:
@@ -731,7 +814,17 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/AccountID'}
         - {in: query, name: limit, schema: {type: integer, default: 20}}
-        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
+        - {in: query, name: before_id, schema: {type: string, format: uuid}}
+        - {in: query, name: order_dir_asc, schema: {type: boolean}}
+        - {in: query, name: categories, schema: {type: array, items: {type: string}}}
+        - {in: query, name: symbols, schema: {type: array, items: {type: string}}}
+        - {in: query, name: intervals, schema: {type: array, items: {type: string}}}
+        - {in: query, name: detector_codes, schema: {type: array, items: {type: string}}}
+        - {in: query, name: statuses, schema: {type: array, items: {type: integer}}}
+        - {in: query, name: min_signals, schema: {type: integer, format: int64}}
+        - {in: query, name: max_signals, schema: {type: integer, format: int64}}
+        - {in: query, name: created_from, schema: {type: string, format: date-time}}
+        - {in: query, name: created_to, schema: {type: string, format: date-time}}
       responses:
         '200':
           description: Страница прогонов
@@ -824,14 +917,21 @@ paths:
   /accounts/{account_id}/signals:
     get:
       summary: Список сигналов
-      description: Курсорная пагинация. Опционально фильтр по `runId`.
+      description: Курсорная пагинация с фильтрацией по прогону, рынку, детектору и времени.
       tags: [signals]
       security: [{bearerAuth: []}]
       parameters:
         - {$ref: '#/components/parameters/AccountID'}
         - {in: query, name: limit, schema: {type: integer, default: 50}}
-        - {in: query, name: beforeId, schema: {type: string, format: uuid}}
-        - {in: query, name: runId, schema: {type: string, format: uuid}}
+        - {in: query, name: before_id, schema: {type: string, format: uuid}}
+        - {in: query, name: order_dir_asc, schema: {type: boolean}}
+        - {in: query, name: run_id, schema: {type: string, format: uuid}}
+        - {in: query, name: categories, schema: {type: array, items: {type: string}}}
+        - {in: query, name: symbols, schema: {type: array, items: {type: string}}}
+        - {in: query, name: intervals, schema: {type: array, items: {type: string}}}
+        - {in: query, name: detector_codes, schema: {type: array, items: {type: string}}}
+        - {in: query, name: created_from, schema: {type: string, format: date-time}}
+        - {in: query, name: created_to, schema: {type: string, format: date-time}}
       responses:
         '200':
           description: Страница сигналов
@@ -1068,19 +1168,34 @@ components:
     # ── Nodes ───────────────────────────────────────────────────────────────
     CreateNodeRequest:
       type: object
-      required: [exchange, host, dockerPort, region, maxWorkers, dbUser, dbPassword]
+      description: |
+        Два режима:
+        - **Новая БД** — передать `dbUser` и `dbPassword`. TimescaleDB будет развёрнут на Docker-хосте автоматически.
+        - **Существующая БД** — передать `dsn`. `dbUser`/`dbPassword` игнорируются, БД не разворачивается.
+      required: [name, exchange, host, dockerPort, region, maxWorkers]
       properties:
+        name: {type: string, example: eu-central-1-node-01}
         exchange: {type: string, example: bybit}
         host: {type: string, format: ipv4, example: 10.0.0.5}
         dockerPort: {type: integer, example: 2376}
         region: {type: string, example: eu-central-1}
         maxWorkers: {type: integer, minimum: 1}
-        dbUser: {type: string}
-        dbPassword: {type: string, format: password}
+        dsn:
+          type: string
+          description: DSN существующей БД. Если задан — `dbUser`/`dbPassword` не нужны.
+          example: postgres://user:pass@localhost:5432/pulsoats?sslmode=disable
+        dbUser:
+          type: string
+          description: Пользователь для новой БД. Обязателен если `dsn` не задан.
+        dbPassword:
+          type: string
+          format: password
+          description: Пароль для новой БД. Обязателен если `dsn` не задан.
     Node:
       type: object
       properties:
         id: {type: string, format: uuid}
+        name: {type: string}
         exchange: {type: string}
         host: {type: string}
         dockerPort: {type: integer}
@@ -1138,6 +1253,7 @@ components:
         id: {type: string, format: uuid}
         nodeId: {type: string, format: uuid}
         exchangeAccountId: {type: string, format: uuid}
+        name: {type: string}
         host: {type: string}
         grpcPort: {type: integer}
         containerId: {type: string}
@@ -1159,6 +1275,11 @@ components:
         memoryPercent: {type: number, format: float}
         memoryUsageBytes: {type: integer, format: int64}
         uptimeSeconds: {type: integer, format: int64}
+    WorkerStats:
+      type: object
+      properties:
+        runsTotal: {type: integer, format: int32}
+        signalsTotal: {type: integer, format: int64}
 
     # ── Analysis ────────────────────────────────────────────────────────────
     AnalysisNewRunRequest:
@@ -1180,6 +1301,7 @@ components:
         - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
+            sumProfitPercent: {type: number, format: float}
             avgProfitPercent: {type: number, format: float}
             isShared: {type: boolean}
             sharedAt: {type: string, format: date-time, nullable: true}
@@ -1205,7 +1327,6 @@ components:
         - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
-            ordersCount: {type: integer, format: int64}
             sumProfitPercent: {type: number, format: float}
             finishedAt: {type: string, format: date-time, nullable: true}
             finishedBy: {type: string, nullable: true}
@@ -1225,8 +1346,8 @@ components:
         market: {$ref: '#/components/schemas/MarketSpec'}
         detectorCode: {type: string}
         detectorOptsLabel: {type: string}
-        time: {type: integer, format: int64, description: Unix ms}
-        value: {type: integer, format: int64}
+        candleTime: {type: integer, format: int64, description: Unix ms}
+        candleValue: {type: integer, format: int64}
         buyValue: {type: integer, format: int64}
         takeProfitValue: {type: integer, format: int64}
         stopLossValue: {type: integer, format: int64}

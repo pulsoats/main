@@ -7,15 +7,15 @@ import (
 	"github.com/aws/smithy-go/logging"
 )
 
-type awsLogger struct {
+type AwsLogger struct {
 	log *slog.Logger
 }
 
-func NewAWSLogger(log *slog.Logger) awsLogger {
-	return awsLogger{log: log}
+func NewAWSLogger(log *slog.Logger) AwsLogger {
+	return AwsLogger{log: log}
 }
 
-func (l awsLogger) Logf(class logging.Classification, format string, v ...interface{}) {
+func (l AwsLogger) Logf(class logging.Classification, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
 	if class == logging.Warn {
 		l.log.Warn(msg)

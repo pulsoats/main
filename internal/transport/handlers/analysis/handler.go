@@ -1,20 +1,14 @@
 package analysis
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/exchange"
 	corerun "github.com/pulsoats/core/run"
 	appanalysis "github.com/pulsoats/main/internal/application/analysis"
 	"github.com/pulsoats/main/internal/domain/analysis"
@@ -22,18 +16,6 @@ import (
 	"github.com/pulsoats/main/internal/transport/handlers/core"
 	"github.com/pulsoats/main/internal/transport/middleware"
 )
-
-type app interface {
-	NewRun(ctx context.Context, callerID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error)
-	RunByID(ctx context.Context, runID uuid.UUID) (analysis.Run, error)
-	StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error
-	ShareRun(ctx context.Context, callerID, runID uuid.UUID) error
-	DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error
-	RunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.RunsPagedRequest) (analysis.RunsPagedResponse, error)
-
-	AvailableExchanges(ctx context.Context) ([]exchange.Meta, error)
-	AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error)
-}
 
 type Handler struct {
 	app *appanalysis.Application
@@ -110,51 +92,32 @@ func (h *Handler) RunArchive(c *gin.Context) {
 	}
 }
 
-func (h *Handler) Runs(c *gin.Context) {
+func (h *Handler) RunsPaged(c *gin.Context) {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		errhttp.RespondError(c, errorsx.ErrInternal)
 		return
 	}
 
-	filter, err := appanalysis.ParseRunFilter(c.DefaultQuery("filter", "mine"))
+	var req runsPagedRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		errhttp.RespondError(c, errorsx.ErrInvalidArgument)
+		return
+	}
+
+	reqFromDTO, err := runsPagedRequestFromDTO(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	limit := int32(20)
-	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
-		parsed, err := strconv.Atoi(rawLimit)
-		if err != nil || parsed <= 0 {
-			errhttp.RespondError(c, fmt.Errorf("limit: %w", errorsx.ErrInvalidArgument))
-			return
-		}
-		limit = int32(parsed)
-	}
-
-	var beforeID *uuid.UUID
-	beforeIDStr := strings.TrimSpace(c.Query("beforeId"))
-	if beforeIDStr != "" {
-		id, err := uuid.Parse(beforeIDStr)
-		if err != nil {
-			errhttp.RespondError(c, fmt.Errorf("beforeId: %w", errorsx.ErrInvalidArgument))
-			return
-		}
-		beforeID = &id
-	}
-
-	runs, err := h.app.RunsPaged(c.Request.Context(), userID, analysis.RunsPagedRequest{
-		Limit:    limit,
-		BeforeID: beforeID,
-		Filter:   filter,
-	})
+	runs, err := h.app.RunsPaged(c.Request.Context(), userID, reqFromDTO)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, listRunsResponseToResponse(runs))
+	c.JSON(http.StatusOK, runsPagedResponseToResponse(runs))
 }
 
 func (h *Handler) ShareRun(c *gin.Context) {
@@ -298,4 +261,3 @@ func (h *Handler) AvailableDetectors(c *gin.Context) {
 
 	c.JSON(http.StatusOK, core.AvailableDetectorsToResponse(exchanges))
 }
-

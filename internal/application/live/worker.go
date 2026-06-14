@@ -131,7 +131,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 			return
 		}
 
-		if err = client.HealthCheck(ctx); err != nil {
+		if err = client.HealthCheck(deployCtx); err != nil {
 			fail(worker.ID, err)
 			return
 		}
@@ -141,9 +141,9 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 			return
 		}
 
-		a.mu.Lock()
+		a.clientsMu.Lock()
 		a.workerClients[account.ID] = client
-		a.mu.Unlock()
+		a.clientsMu.Unlock()
 
 		if err = a.workerRepo.UpdateWorkerStatusByID(deployCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
 			fail(worker.ID, err)
@@ -161,10 +161,10 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	grpcClient, grpcOk := a.workerClients[worker.ExchangeAccountID]
 	dockerClient, dockerOk := a.nodeClients[worker.NodeID]
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	if !grpcOk || !dockerOk {
 		a.logger.Error("client state inconsistency",
@@ -185,9 +185,9 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	a.mu.Lock()
+	a.clientsMu.Lock()
 	delete(a.workerClients, worker.ExchangeAccountID)
-	a.mu.Unlock()
+	a.clientsMu.Unlock()
 
 	if err := a.workerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusStopped, nil); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
@@ -209,12 +209,12 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 	}
 
 	if worker.Status != live.WorkerStatusStopped {
-		return live.Worker{}, fmt.Errorf("%s: worker must be stopped to start: %w", op, errorsx.ErrConflict)
+		return live.Worker{}, fmt.Errorf("%s: worker clientsMust be stopped to start: %w", op, errorsx.ErrConflict)
 	}
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	dockerClient, ok := a.nodeClients[worker.NodeID]
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 	if !ok {
 		return live.Worker{}, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
 	}
@@ -272,9 +272,9 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 			return
 		}
 
-		a.mu.Lock()
+		a.clientsMu.Lock()
 		a.workerClients[accountID] = client
-		a.mu.Unlock()
+		a.clientsMu.Unlock()
 
 		if err = a.workerRepo.UpdateWorkerStatusByID(startCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
 			fail(err)
@@ -316,9 +316,9 @@ func (a *Application) SubscribeWorkerMetrics(ctx context.Context, exchangeAccoun
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	dockerClient, ok := a.nodeClients[worker.NodeID]
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
 	}
@@ -326,47 +326,119 @@ func (a *Application) SubscribeWorkerMetrics(ctx context.Context, exchangeAccoun
 	subID := uuid.New()
 	ch := make(chan live.Metrics, 16)
 
-	a.mu.Lock()
+	a.subsMu.Lock()
 	firstSub := len(a.metricsSubs[exchangeAccountID]) == 0
 	if a.metricsSubs[exchangeAccountID] == nil {
 		a.metricsSubs[exchangeAccountID] = make(map[uuid.UUID]chan live.Metrics)
 	}
 	a.metricsSubs[exchangeAccountID][subID] = ch
-	a.mu.Unlock()
+	a.subsMu.Unlock()
 
 	if firstSub {
-		metricsChan, err := dockerClient.StreamWorkerMetrics(context.Background(), worker.ContainerID)
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		metricsChan, err := dockerClient.StreamWorkerMetrics(streamCtx, worker.ContainerID)
 		if err != nil {
-			a.mu.Lock()
+			streamCancel()
+			a.subsMu.Lock()
 			delete(a.metricsSubs[exchangeAccountID], subID)
 			delete(a.metricsSubs, exchangeAccountID)
-			a.mu.Unlock()
+			a.subsMu.Unlock()
 			close(ch)
 			return nil, fmt.Errorf("%s: stream: %w", op, err)
 		}
-		go a.broadcastWorkerMetrics(exchangeAccountID, metricsChan)
+		go a.broadcastWorkerMetrics(exchangeAccountID, metricsChan, streamCancel)
 	}
 
 	go func() {
 		<-ctx.Done()
-		a.mu.Lock()
+		a.subsMu.Lock()
 		delete(a.metricsSubs[exchangeAccountID], subID)
 		if len(a.metricsSubs[exchangeAccountID]) == 0 {
 			delete(a.metricsSubs, exchangeAccountID)
 		}
-		a.mu.Unlock()
+		a.subsMu.Unlock()
 		close(ch)
 	}()
 
 	return ch, nil
 }
 
-func (a *Application) broadcastWorkerMetrics(accountID uuid.UUID, metricsChan <-chan live.Metrics) {
+func (a *Application) SubscribeWorkerStats(ctx context.Context, accountID uuid.UUID) (<-chan live.WorkerStats, error) {
+	const op = "subscribe worker stats"
+
+	a.clientsMu.RLock()
+	client, ok := a.workerClients[accountID]
+	a.clientsMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("%s: worker client not initialized: %w", op, errorsx.ErrInternal)
+	}
+
+	subID := uuid.New()
+	ch := make(chan live.WorkerStats, 16)
+
+	a.subsMu.Lock()
+	firstSub := len(a.statsSubs[accountID]) == 0
+	if a.statsSubs[accountID] == nil {
+		a.statsSubs[accountID] = make(map[uuid.UUID]chan live.WorkerStats)
+	}
+	a.statsSubs[accountID][subID] = ch
+	a.subsMu.Unlock()
+
+	if firstSub {
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		statsChan, err := client.StreamWorkerStats(streamCtx)
+		if err != nil {
+			streamCancel()
+			a.subsMu.Lock()
+			delete(a.statsSubs[accountID], subID)
+			delete(a.statsSubs, accountID)
+			a.subsMu.Unlock()
+			close(ch)
+			return nil, fmt.Errorf("%s: stream: %w", op, err)
+		}
+		go a.broadcastWorkerStats(accountID, statsChan, streamCancel)
+	}
+
+	go func() {
+		<-ctx.Done()
+		a.subsMu.Lock()
+		delete(a.statsSubs[accountID], subID)
+		if len(a.statsSubs[accountID]) == 0 {
+			delete(a.statsSubs, accountID)
+		}
+		a.subsMu.Unlock()
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+func (a *Application) broadcastWorkerStats(accountID uuid.UUID, statsChan <-chan live.WorkerStats, cancel context.CancelFunc) {
+	defer cancel()
+	for stats := range statsChan {
+		a.subsMu.RLock()
+		subs := a.statsSubs[accountID]
+		if len(subs) == 0 {
+			a.subsMu.RUnlock()
+			return
+		}
+		for _, ch := range subs {
+			select {
+			case ch <- stats:
+			default:
+			}
+		}
+		a.subsMu.RUnlock()
+	}
+}
+
+func (a *Application) broadcastWorkerMetrics(accountID uuid.UUID, metricsChan <-chan live.Metrics, cancel context.CancelFunc) {
+	defer cancel()
 	for metrics := range metricsChan {
-		a.mu.RLock()
+		a.subsMu.RLock()
 		subs := a.metricsSubs[accountID]
 		if len(subs) == 0 {
-			a.mu.RUnlock()
+			a.subsMu.RUnlock()
 			return
 		}
 		for _, ch := range subs {
@@ -375,20 +447,20 @@ func (a *Application) broadcastWorkerMetrics(accountID uuid.UUID, metricsChan <-
 			default:
 			}
 		}
-		a.mu.RUnlock()
+		a.subsMu.RUnlock()
 	}
 }
 
 func (a *Application) AvailableDetectors(ctx context.Context, accountID uuid.UUID) ([]detect.DetectorMeta, error) {
 	const op = "available detectors"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return nil, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	result, err := client.AvailableDetectors(ctx)
 	if err != nil {
@@ -401,13 +473,13 @@ func (a *Application) AvailableDetectors(ctx context.Context, accountID uuid.UUI
 func (a *Application) AvailableExchanges(ctx context.Context, accountID uuid.UUID) ([]exchange.Meta, error) {
 	const op = "available exchanges"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return nil, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	result, err := client.AvailableExchanges(ctx)
 	if err != nil {
@@ -420,13 +492,13 @@ func (a *Application) AvailableExchanges(ctx context.Context, accountID uuid.UUI
 func (a *Application) NewRun(ctx context.Context, accountID uuid.UUID, mkt market.Spec, interval string, detector detect.DetectorConfig, callerID uuid.UUID) (live.Run, error) {
 	const op = "new run"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return live.Run{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	resp, err := client.NewRun(ctx, mkt, interval, detector, callerID)
 	if err != nil {
@@ -441,13 +513,13 @@ func (a *Application) NewRun(ctx context.Context, accountID uuid.UUID, mkt marke
 func (a *Application) RestartRun(ctx context.Context, accountID uuid.UUID, runID uuid.UUID, callerID uuid.UUID) (live.Run, error) {
 	const op = "restart run"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return live.Run{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	resp, err := client.RestartRun(ctx, runID, callerID)
 	if err != nil {
@@ -460,13 +532,13 @@ func (a *Application) RestartRun(ctx context.Context, accountID uuid.UUID, runID
 func (a *Application) StopRun(ctx context.Context, accountID uuid.UUID, runID uuid.UUID, callerID uuid.UUID) error {
 	const op = "stop run"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	if err := client.StopRun(ctx, runID, callerID); err != nil {
 		return fmt.Errorf("%s: client: %w", op, err)
@@ -478,13 +550,13 @@ func (a *Application) StopRun(ctx context.Context, accountID uuid.UUID, runID uu
 func (a *Application) StopAllRuns(ctx context.Context, accountID uuid.UUID, callerID uuid.UUID) error {
 	const op = "stop all runs"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	if err := client.StopAllRuns(ctx, callerID); err != nil {
 		return fmt.Errorf("%s: client: %w", op, err)
@@ -496,13 +568,13 @@ func (a *Application) StopAllRuns(ctx context.Context, accountID uuid.UUID, call
 func (a *Application) Run(ctx context.Context, accountID uuid.UUID, runID uuid.UUID) (live.Run, error) {
 	const op = "get run"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return live.Run{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	resp, err := client.GetRun(ctx, runID)
 	if err != nil {
@@ -512,20 +584,20 @@ func (a *Application) Run(ctx context.Context, accountID uuid.UUID, runID uuid.U
 	return resp, nil
 }
 
-func (a *Application) RunsPaged(ctx context.Context, accountID uuid.UUID, req live.RunsRequest) (live.RunsResponse, error) {
+func (a *Application) RunsPaged(ctx context.Context, accountID uuid.UUID, req live.RunsPagedRequest) (live.RunsPagedResponse, error) {
 	const op = "runs paged"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
-		return live.RunsResponse{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
+		a.clientsMu.RUnlock()
+		return live.RunsPagedResponse{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	resp, err := client.RunsPaged(ctx, req)
 	if err != nil {
-		return live.RunsResponse{}, fmt.Errorf("%s: client: %w", op, err)
+		return live.RunsPagedResponse{}, fmt.Errorf("%s: client: %w", op, err)
 	}
 
 	return resp, nil
@@ -534,13 +606,13 @@ func (a *Application) RunsPaged(ctx context.Context, accountID uuid.UUID, req li
 func (a *Application) SignalsPaged(ctx context.Context, accountID uuid.UUID, req live.SignalsPagedRequest) (live.SignalsPagedResponse, error) {
 	const op = "signals paged"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return live.SignalsPagedResponse{}, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	resp, err := client.SignalsPaged(ctx, req)
 	if err != nil {
@@ -553,13 +625,13 @@ func (a *Application) SignalsPaged(ctx context.Context, accountID uuid.UUID, req
 func (a *Application) StreamEvents(ctx context.Context, accountID uuid.UUID) (<-chan live.Event, error) {
 	const op = "stream events"
 
-	a.mu.RLock()
+	a.clientsMu.RLock()
 	client, ok := a.workerClients[accountID]
 	if !ok {
-		a.mu.RUnlock()
+		a.clientsMu.RUnlock()
 		return nil, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
 	}
-	a.mu.RUnlock()
+	a.clientsMu.RUnlock()
 
 	ch, err := client.StreamEvents(ctx)
 	if err != nil {

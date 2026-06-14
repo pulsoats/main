@@ -78,19 +78,31 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 		deployCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		containerName := fmt.Sprintf(dbContainerName, a.appName)
-		dsn, err := dockerClient.DeployDB(deployCtx, containerName, req.DBUser, req.DBPassword)
-		if err != nil {
-			fail(node.ID, err)
+		var dsn string
+		if req.DSN != nil {
+			dsn = *req.DSN
+		} else {
+			if req.DBUser == "" || req.DBPassword == "" {
+				fail(node.ID, fmt.Errorf("dbUser and dbPassword are required when dsn is not provided"))
+				return
+			}
+			containerName := fmt.Sprintf(dbContainerName, a.appName)
+			var deployErr error
+			dsn, deployErr = dockerClient.DeployDB(deployCtx, containerName, req.DBUser, req.DBPassword)
+			if deployErr != nil {
+				fail(node.ID, deployErr)
+				return
+			}
 		}
 
 		if err = a.nodeRepo.UpdateNodeDSNByID(deployCtx, node.ID, dsn); err != nil {
 			fail(node.ID, err)
+			return
 		}
 
-		a.mu.Lock()
+		a.clientsMu.Lock()
 		a.nodeClients[node.ID] = dockerClient
-		a.mu.Unlock()
+		a.clientsMu.Unlock()
 
 		if err = a.nodeRepo.UpdateNodeStatusByID(deployCtx, node.ID, live.NodeStatusActive, nil); err != nil {
 			fail(node.ID, err)
@@ -103,12 +115,18 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerID uuid.UUID) error {
 	const op = "disable node"
 
-	a.mu.RLock()
-	nodeClient, ok := a.nodeClients[nodeID]
-	a.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("%s: node: %w", op, errorsx.ErrNotFound)
+	// Check DB first so we can disable nodes whose client was not restored after restart.
+	node, err := a.nodeRepo.NodeByID(ctx, nodeID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
 	}
+	if node.Status == live.NodeStatusDisabled || node.Status == live.NodeStatusDisabling {
+		return fmt.Errorf("%s: node: %w", op, errorsx.ErrConflict)
+	}
+
+	a.clientsMu.RLock()
+	nodeClient, hasClient := a.nodeClients[nodeID]
+	a.clientsMu.RUnlock()
 
 	workers, err := a.workerRepo.WorkersByNodeID(ctx, nodeID, live.WorkerStatusRunning)
 	if err != nil {
@@ -124,9 +142,9 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 		defer cancel()
 
 		for _, w := range workers {
-			a.mu.RLock()
+			a.clientsMu.RLock()
 			client, ok := a.workerClients[w.ExchangeAccountID]
-			a.mu.RUnlock()
+			a.clientsMu.RUnlock()
 
 			if ok {
 				if err := client.StopAllRuns(disableCtx, callerID); err != nil {
@@ -134,22 +152,28 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 				}
 			}
 
-			if err := nodeClient.StopWorker(disableCtx, w.ContainerID); err != nil {
-				s := err.Error()
-				if saveErr := a.workerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusFailed, &s); saveErr != nil {
-					a.logger.Error("failed to update worker status",
-						"op", op,
-						"repo_error", saveErr.Error(),
-						"stop_error", err,
-						"worker_id", w.ID,
-					)
+			if hasClient {
+				if err := nodeClient.StopWorker(disableCtx, w.ContainerID); err != nil {
+					s := err.Error()
+					if saveErr := a.workerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusFailed, &s); saveErr != nil {
+						a.logger.Error("failed to update worker status",
+							"op", op,
+							"repo_error", saveErr.Error(),
+							"stop_error", err,
+							"worker_id", w.ID,
+						)
+					}
+					continue
 				}
-				continue
+			} else {
+				// Docker client not available — mark worker as stopped in DB best-effort.
+				a.logger.Warn("docker client unavailable, marking worker stopped without container stop",
+					"op", op, "worker_id", w.ID)
 			}
 
-			a.mu.Lock()
+			a.clientsMu.Lock()
 			delete(a.workerClients, w.ExchangeAccountID)
-			a.mu.Unlock()
+			a.clientsMu.Unlock()
 
 			if err := a.workerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusStopped, nil); err != nil {
 				a.logger.Error("failed to update worker status",
@@ -160,9 +184,9 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 			}
 		}
 
-		a.mu.Lock()
+		a.clientsMu.Lock()
 		delete(a.nodeClients, nodeID)
-		a.mu.Unlock()
+		a.clientsMu.Unlock()
 
 		if err := a.nodeRepo.UpdateNodeStatusByID(disableCtx, nodeID, live.NodeStatusDisabled, nil); err != nil {
 			a.logger.Error("failed to update node status",
@@ -199,9 +223,9 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	a.mu.Lock()
+	a.clientsMu.Lock()
 	a.nodeClients[nodeID] = dockerClient
-	a.mu.Unlock()
+	a.clientsMu.Unlock()
 
 	go func() {
 		fail := func(workerID uuid.UUID, workerErr error) {
@@ -249,9 +273,9 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 				continue
 			}
 
-			a.mu.Lock()
+			a.clientsMu.Lock()
 			a.workerClients[w.ExchangeAccountID] = grpcClient
-			a.mu.Unlock()
+			a.clientsMu.Unlock()
 
 			if err = a.workerRepo.UpdateWorkerDeploymentByID(workerCtx, w.ID, w.ContainerID, port); err != nil {
 				a.logger.Error("failed to update worker deployment",

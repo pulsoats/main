@@ -75,9 +75,9 @@ const (
 	envGHCRToken     = "GHCR_TOKEN"
 	envLiveImageURL  = "LIVE_IMAGE_URL"
 	envDockerDBImage = "DOCKER_DB_IMAGE"
-	envDockerCACert  = "DOCKER_CA_CERT"
-	envDockerCert    = "DOCKER_CERT"
-	envDockerKey     = "DOCKER_KEY"
+	envDockerCACertFile = "DOCKER_CA_CERT_FILE"
+	envDockerCertFile   = "DOCKER_CERT_FILE"
+	envDockerKeyFile    = "DOCKER_KEY_FILE"
 )
 
 const (
@@ -181,11 +181,14 @@ func main() {
 
 	// --- Live ---
 
-	credKey := []byte(strings.TrimSpace(os.Getenv(envCredentialsKey)))
-	if len(credKey) == 0 {
+	credKeyHex := strings.TrimSpace(os.Getenv(envCredentialsKey))
+	if credKeyHex == "" {
 		zlogger.Fatal().Msg("CREDENTIALS_KEY is required")
 	}
-	encryptor := cryptox.NewEncryptor(credKey)
+	encryptor, err := cryptox.NewEncryptor(credKeyHex)
+	if err != nil {
+		zlogger.Fatal().Err(err).Msg("init encryptor")
+	}
 
 	nodeRepo := repolive.NewPostgresNodeRepository(qp)
 	workerRepo := repolive.NewPostgresWorkerRepository(qp)
@@ -243,10 +246,10 @@ func main() {
 		NodeRepo:            nodeRepo,
 		AccountRepo:         accountRepo,
 		MarketRepo:          marketRepo,
-		TxManager:           txManager,
 		EmailSender:         emailSender,
+		GRPCCACert:          string(grpcCACertPEM),
 		CertGenerator:       certGenerator,
-		DockerFactory:       dockerFactory,
+		DockerClientFactory: dockerFactory,
 		WorkerClientFactory: grpcClientFactory,
 		Logger:              slogAdapter,
 	})
@@ -376,22 +379,24 @@ func createSESClient(log *slog.Logger) (*sesv2.Client, error) {
 }
 
 func createDockerTLSConfig() (*tls.Config, error) {
-	caCert := []byte(strings.TrimSpace(os.Getenv(envDockerCACert)))
-	if len(caCert) == 0 {
-		return nil, fmt.Errorf("DOCKER_CA_CERT is required")
+	caCertFile := strings.TrimSpace(os.Getenv(envDockerCACertFile))
+	if caCertFile == "" {
+		return nil, fmt.Errorf("DOCKER_CA_CERT_FILE is required")
+	}
+	certFile := strings.TrimSpace(os.Getenv(envDockerCertFile))
+	if certFile == "" {
+		return nil, fmt.Errorf("DOCKER_CERT_FILE is required")
+	}
+	keyFile := strings.TrimSpace(os.Getenv(envDockerKeyFile))
+	if keyFile == "" {
+		return nil, fmt.Errorf("DOCKER_KEY_FILE is required")
 	}
 
-	cert := []byte(strings.TrimSpace(os.Getenv(envDockerCert)))
-	if len(cert) == 0 {
-		return nil, fmt.Errorf("DOCKER_CERT is required")
+	caCert, err := os.ReadFile(caCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("docker tls: read ca cert: %w", err)
 	}
-
-	key := []byte(strings.TrimSpace(os.Getenv(envDockerKey)))
-	if len(key) == 0 {
-		return nil, fmt.Errorf("DOCKER_KEY is required")
-	}
-
-	tlsCert, err := tls.X509KeyPair(cert, key)
+	tlsCert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("docker tls: key pair: %w", err)
 	}

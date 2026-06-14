@@ -109,6 +109,9 @@ func (r *WorkerRepository) WorkerByAccountID(ctx context.Context, accountID uuid
 		&w.CreatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return live.Worker{}, fmt.Errorf("%s: %w", op, errorsx.ErrNotFound)
+		}
 		return live.Worker{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
@@ -291,7 +294,7 @@ func (r *WorkerRepository) UpdateWorkerStatusByID(ctx context.Context, workerID 
 	const query = `
 	UPDATE workers
 	SET status = $2,
-	    error = $3
+	    last_error = $3
 	WHERE id = $1;
 	`
 

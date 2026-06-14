@@ -41,17 +41,20 @@ type updateExchangeAccountCredentialsRequest struct {
 }
 
 type createNodeRequest struct {
-	Exchange   string `json:"exchange" binding:"required"`
-	Host       string `json:"host" binding:"required"`
-	DockerPort int    `json:"dockerPort" binding:"required"`
-	Region     string `json:"region" binding:"required"`
-	MaxWorkers int    `json:"maxWorkers" binding:"required"`
-	DBUser     string `json:"dbUser" binding:"required"`
-	DBPassword string `json:"dbPassword" binding:"required"`
+	Name       string  `json:"name" binding:"required"`
+	Exchange   string  `json:"exchange"   binding:"required"`
+	Host       string  `json:"host"       binding:"required"`
+	DockerPort int     `json:"dockerPort" binding:"required"`
+	Region     string  `json:"region"     binding:"required"`
+	MaxWorkers int     `json:"maxWorkers" binding:"required"`
+	DSN        *string `json:"dsn"`
+	DBUser     string  `json:"dbUser"`
+	DBPassword string  `json:"dbPassword"`
 }
 
 type nodeResponse struct {
 	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
 	Exchange     string    `json:"exchange"`
 	Host         string    `json:"host"`
 	DockerPort   int       `json:"dockerPort"`
@@ -88,32 +91,38 @@ type workersResponse struct {
 	Workers []workerResponse `json:"workers"`
 }
 
+type runResponse struct {
+	core.BaseRunResponse
+	SumProfitPercent float64 `json:"sumProfitPercent"`
+	FinishedAt       *string `json:"finishedAt,omitempty"`
+	FinishedBy       *string `json:"finishedBy,omitempty"`
+}
+
 type newRunRequest struct {
 	Market   core.MarketSpecRequest     `json:"market" binding:"required"`
 	Interval string                     `json:"interval" binding:"required"`
 	Detector core.DetectorConfigRequest `json:"detector" binding:"required"`
 }
 
-type listRunsQuery struct {
-	Limit    int32      `form:"limit"`
-	BeforeID *uuid.UUID `form:"beforeId"`
+type runsPagedRequest struct {
+	Limit       int32  `form:"limit"`
+	BeforeID    string `form:"before_id"`
+	OrderDirAsc bool   `form:"order_dir_asc"`
+
+	Categories    []string `form:"categories"`
+	Symbols       []string `form:"symbols"`
+	Intervals     []string `form:"intervals"`
+	DetectorCodes []string `form:"detector_codes"`
+	Statuses      []int    `form:"statuses"`
+
+	MinSignals *int64 `form:"min_signals"`
+	MaxSignals *int64 `form:"max_signals"`
+
+	CreatedFrom *time.Time `form:"created_from"`
+	CreatedTo   *time.Time `form:"created_to"`
 }
 
-type listSignalsQuery struct {
-	Limit    int32      `form:"limit"`
-	BeforeID *uuid.UUID `form:"beforeId"`
-	RunID    *uuid.UUID `form:"runId"`
-}
-
-type runResponse struct {
-	core.BaseRunResponse
-	OrdersCount      int64   `json:"ordersCount"`
-	SumProfitPercent float64 `json:"sumProfitPercent"`
-	FinishedAt       *string `json:"finishedAt,omitempty"`
-	FinishedBy       *string `json:"finishedBy,omitempty"`
-}
-
-type listRunsResponse struct {
+type runsPagedResponse struct {
 	Runs         []runResponse `json:"runs"`
 	NextBeforeID *uuid.UUID    `json:"nextBeforeId,omitempty"`
 	HasMore      bool          `json:"hasMore"`
@@ -125,8 +134,8 @@ type signalResponse struct {
 	Market            core.MarketSpecResponse `json:"market"`
 	DetectorCode      string                  `json:"detectorCode"`
 	DetectorOptsLabel string                  `json:"detectorOptsLabel"`
-	Time              int64                   `json:"time"`
-	Value             int64                   `json:"value"`
+	CandleTime        int64                   `json:"candleTime"`
+	CandleValue       int64                   `json:"candleValue"`
 	BuyValue          int64                   `json:"buyValue"`
 	TakeProfitValue   int64                   `json:"takeProfitValue"`
 	StopLossValue     int64                   `json:"stopLossValue"`
@@ -135,8 +144,28 @@ type signalResponse struct {
 	CreatedAt         int64                   `json:"createdAt"`
 }
 
-type listSignalsResponse struct {
+type signalsPagedRequest struct {
+	Limit       int32  `form:"limit"`
+	BeforeID    string `form:"before_id"`
+	OrderDirAsc bool   `form:"order_dir_asc"`
+	RunID       string `form:"run_id"`
+
+	Categories    []string `form:"categories"`
+	Symbols       []string `form:"symbols"`
+	Intervals     []string `form:"intervals"`
+	DetectorCodes []string `form:"detector_codes"`
+
+	CreatedFrom *time.Time `form:"created_from"`
+	CreatedTo   *time.Time `form:"created_to"`
+}
+
+type signalsPagedResponse struct {
 	Signals      []signalResponse `json:"signals"`
 	NextBeforeID *uuid.UUID       `json:"nextBeforeId,omitempty"`
 	HasMore      bool             `json:"hasMore"`
+}
+
+type workerStatsResponse struct {
+	RunsTotal    int32 `json:"runsTotal"`
+	SignalsTotal int64 `json:"signalsTotal"`
 }

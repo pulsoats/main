@@ -20,11 +20,13 @@ func (h *Handler) CreateNode(c *gin.Context) {
 	}
 
 	node, err := h.app.CreateNode(c.Request.Context(), domainlive.AddNodeRequest{
+		Name:       req.Name,
 		Exchange:   req.Exchange,
 		Host:       req.Host,
 		DockerPort: req.DockerPort,
 		Region:     req.Region,
 		MaxWorkers: req.MaxWorkers,
+		DSN:        req.DSN,
 		DBUser:     req.DBUser,
 		DBPassword: req.DBPassword,
 	})

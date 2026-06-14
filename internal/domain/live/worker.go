@@ -39,3 +39,8 @@ type WorkerRepository interface {
 	UpdateWorkerStatusByID(ctx context.Context, workerID uuid.UUID, status WorkerStatus, workerErr *string) error
 	UpdateWorkerDeploymentByID(ctx context.Context, workerID uuid.UUID, containerID string, grpcPort int) error
 }
+
+type WorkerStats struct {
+	RunsTotal    int32
+	SignalsTotal int64
+}

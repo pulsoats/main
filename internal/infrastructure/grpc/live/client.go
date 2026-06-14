@@ -77,9 +77,9 @@ func (c *Client) NewRun(ctx context.Context, market market.Spec, interval string
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
 	resp, err := c.live.NewRun(ctx, &livepb.NewRunRequest{
-		Market:   core.MarketSpecToProto(market),
-		Interval: interval,
-		Detector: core.DetectorConfigToProto(detector),
+		Market:         core.MarketSpecToProto(market),
+		Interval:       interval,
+		DetectorConfig: core.DetectorConfigToProto(detector),
 	})
 	if err != nil {
 		return live.Run{}, core.MapError(err)
@@ -87,7 +87,7 @@ func (c *Client) NewRun(ctx context.Context, market market.Spec, interval string
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return r, nil
@@ -118,7 +118,7 @@ func (c *Client) RestartRun(ctx context.Context, runID uuid.UUID, callerID uuid.
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return r, nil
@@ -133,7 +133,7 @@ func (c *Client) GetRun(ctx context.Context, runID uuid.UUID) (live.Run, error) 
 
 	r, err := runFromProto(resp)
 	if err != nil {
-		return live.Run{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.Run{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return r, nil
@@ -173,17 +173,17 @@ func (c *Client) StreamEvents(ctx context.Context) (<-chan live.Event, error) {
 	return ch, nil
 }
 
-func (c *Client) RunsPaged(ctx context.Context, req live.RunsRequest) (live.RunsResponse, error) {
+func (c *Client) RunsPaged(ctx context.Context, req live.RunsPagedRequest) (live.RunsPagedResponse, error) {
 	const op = "runs paged"
-	pbReq := listRunsRequestToProto(req)
+	pbReq := runsPagedRequestToProto(req)
 	pbResp, err := c.live.ListRunsPaged(ctx, pbReq)
 	if err != nil {
-		return live.RunsResponse{}, core.MapError(err)
+		return live.RunsPagedResponse{}, core.MapError(err)
 	}
 
-	resp, err := listRunsResponseFromProto(pbResp)
+	resp, err := runsPagedResponseFromProto(pbResp)
 	if err != nil {
-		return live.RunsResponse{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.RunsPagedResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return resp, nil
@@ -191,15 +191,15 @@ func (c *Client) RunsPaged(ctx context.Context, req live.RunsRequest) (live.Runs
 
 func (c *Client) SignalsPaged(ctx context.Context, req live.SignalsPagedRequest) (live.SignalsPagedResponse, error) {
 	const op = "signals paged"
-	pbReq := listSignalsRequestToProto(req)
+	pbReq := signalsPagedRequestToProto(req)
 	pbResp, err := c.live.ListSignalsPaged(ctx, pbReq)
 	if err != nil {
 		return live.SignalsPagedResponse{}, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	resp, err := listSignalsResponseFromProto(pbResp)
+	resp, err := signalsPagedResponseFromProto(pbResp)
 	if err != nil {
-		return live.SignalsPagedResponse{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.SignalsPagedResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return resp, nil
@@ -212,15 +212,11 @@ func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta,
 		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	if resp == nil {
-		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
-	}
-
 	result := make([]detect.DetectorMeta, 0, len(resp.Detectors))
 	for _, pb := range resp.Detectors {
-		meta, ok := core.DetectorMetaFromProto(pb)
-		if !ok {
-			return nil, fmt.Errorf("%s: nil entry: %w", op, errorsx.ErrInternal)
+		meta, err := core.DetectorMetaFromProto(pb)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 		result = append(result, meta)
 	}
@@ -235,18 +231,48 @@ func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error
 		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	if resp == nil {
-		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
-	}
-
 	result := make([]exchange.Meta, 0, len(resp.ExchangeMetas))
 	for _, pb := range resp.ExchangeMetas {
 		meta, err := core.ExchangeMetaFromProto(pb)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, errorsx.ErrInternal)
+			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 		result = append(result, meta)
 	}
 
 	return result, nil
+}
+
+func (c *Client) StreamWorkerStats(ctx context.Context) (<-chan live.WorkerStats, error) {
+	const op = "stream worker stats"
+
+	grpcStream, err := c.live.StreamWorkerStats(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
+	}
+
+	ch := make(chan live.WorkerStats, 64)
+
+	go func() {
+		defer close(ch)
+		for {
+			pb, err := grpcStream.Recv()
+			if err != nil {
+				if !errors.Is(err, io.EOF) && ctx.Err() == nil {
+					slog.Error(op+": recv", "error", err)
+				}
+				return
+			}
+			select {
+			case ch <- live.WorkerStats{
+				RunsTotal:    pb.RunsTotal,
+				SignalsTotal: pb.SignalsTotal,
+			}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return ch, nil
 }

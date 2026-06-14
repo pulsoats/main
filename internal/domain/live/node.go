@@ -20,6 +20,7 @@ const (
 
 type Node struct {
 	ID           uuid.UUID
+	Name         string
 	Exchange     string
 	Host         string
 	DockerPort   int
@@ -44,11 +45,15 @@ type NodeRepository interface {
 }
 
 type AddNodeRequest struct {
+	Name       string
 	Exchange   string
 	Host       string
 	DockerPort int
 	Region     string
 	MaxWorkers int
+	// DBUser/DBPassword are used to deploy a new DB container on the node.
+	// If DSN is set, the existing database is used and DBUser/DBPassword are ignored.
+	DSN        *string
 	DBUser     string
 	DBPassword string
 }

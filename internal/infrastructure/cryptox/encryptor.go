@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +16,18 @@ type Encryptor struct {
 	key []byte
 }
 
-func NewEncryptor(key []byte) *Encryptor {
-	return &Encryptor{key: key}
+// NewEncryptor accepts a hex-encoded AES key (32 bytes → 64 hex chars for AES-256).
+func NewEncryptor(hexKey string) (*Encryptor, error) {
+	key, err := hex.DecodeString(hexKey)
+	if err != nil {
+		return nil, fmt.Errorf("cryptox: decode key: %w", err)
+	}
+	switch len(key) {
+	case 16, 24, 32:
+	default:
+		return nil, fmt.Errorf("cryptox: invalid key length %d (must be 16, 24, or 32 bytes)", len(key))
+	}
+	return &Encryptor{key: key}, nil
 }
 
 func (e *Encryptor) Encrypt(plaintext string) ([]byte, error) {

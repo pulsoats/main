@@ -1,13 +1,16 @@
 package analysis
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/lib/units"
 	"github.com/pulsoats/core/market"
+	corerun "github.com/pulsoats/core/run"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/transport/handlers/core"
 )
@@ -64,21 +67,62 @@ func runToResponse(run analysis.Run) runResponse {
 
 	return runResponse{
 		BaseRunResponse:  core.BaseRunToResponse(run.BaseRun),
+		SumProfitPercent: run.SumProfitPercent,
 		AvgProfitPercent: run.AvgProfitPercent,
 		IsShared:         run.IsShared,
 		SharedAt:         sharedAt,
 	}
 }
 
-func listRunsResponseToResponse(resp analysis.RunsPagedResponse) listRunsResponse {
+func runsPagedRequestFromDTO(req runsPagedRequest) (analysis.RunsPagedRequest, error) {
+	var beforeID *uuid.UUID
+	if req.BeforeID != "" {
+		id, err := uuid.Parse(req.BeforeID)
+		if err != nil {
+			return analysis.RunsPagedRequest{}, fmt.Errorf("runs paged request from dto: invalid before_id: %w", errors.Join(errorsx.ErrInvalidArgument, err))
+		}
+		beforeID = &id
+	}
+
+	for _, s := range req.Statuses {
+		if _, ok := corerun.ParseStatusCode(s); !ok {
+			return analysis.RunsPagedRequest{}, fmt.Errorf("runs paged request from dto: invalid status_code: %d: %w", s, errorsx.ErrInvalidArgument)
+		}
+	}
+
+	return analysis.RunsPagedRequest{
+		Limit:       req.Limit,
+		BeforeID:    beforeID,
+		OrderDirAsc: req.OrderDirAsc,
+		Scope:       req.Scope,
+		Filter: &analysis.RunsFilter{
+			Exchanges:       req.Exchanges,
+			Categories:      req.Categories,
+			Symbols:         req.Symbols,
+			Intervals:       req.Intervals,
+			DetectorCodes:   req.DetectorCodes,
+			Statuses:        req.Statuses,
+			MinSignals:      req.MinSignals,
+			MaxSignals:      req.MaxSignals,
+			MinAvgProfitPct: req.MinAvgProfitPct,
+			MaxAvgProfitPct: req.MaxAvgProfitPct,
+			FirstCandleFrom: req.FirstCandleFrom,
+			LastCandleTo:    req.LastCandleTo,
+			CreatedFrom:     req.CreatedFrom,
+			CreatedTo:       req.CreatedTo,
+		},
+	}, nil
+}
+
+func runsPagedResponseToResponse(resp analysis.RunsPagedResponse) runsPagedResponse {
 	runs := make([]runResponse, 0, len(resp.Runs))
 	for _, r := range resp.Runs {
 		runs = append(runs, runToResponse(r))
 	}
 
-	return listRunsResponse{
+	return runsPagedResponse{
 		Runs:         runs,
-		NextBeforeID: resp.NextBeforeID,
 		HasMore:      resp.HasMore,
+		NextBeforeID: resp.NextBeforeID,
 	}
 }

@@ -19,6 +19,8 @@ func (a *Application) LoadFromDB(ctx context.Context) []error {
 		return []error{fmt.Errorf("load from db: nodes: %w", err)}
 	}
 
+	a.clientsMu.Lock()
+	defer a.clientsMu.Unlock()
 	for _, node := range nodes {
 		if node.Status != live.NodeStatusActive {
 			continue

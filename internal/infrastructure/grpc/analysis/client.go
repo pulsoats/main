@@ -17,7 +17,7 @@ import (
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/main/internal/domain/analysis"
-	core2 "github.com/pulsoats/main/internal/infrastructure/grpc/core"
+	coregrpc "github.com/pulsoats/main/internal/infrastructure/grpc/core"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -56,30 +56,37 @@ func NewClient(addr string, tlsCfg *tls.Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) NewRun(ctx context.Context, callerID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error) {
+func (c *Client) NewRun(ctx context.Context, userID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error) {
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		"x-user-id", callerID.String(),
+		"x-user-id", userID.String(),
 	))
 
 	run, err := c.analysis.NewRun(ctx, mapNewRunRequest(req))
 	if err != nil {
-		return analysis.Run{}, core2.MapError(err)
+		return analysis.Run{}, coregrpc.MapError(err)
 	}
 	return runFromProto(run)
 }
 
 func (c *Client) RunByID(ctx context.Context, runID uuid.UUID) (analysis.Run, error) {
-	run, err := c.analysis.GetRun(ctx, &corepb.RunID{RunId: runID.String()})
+	const op = "run by id"
+	resp, err := c.analysis.GetRun(ctx, &corepb.RunID{RunId: runID.String()})
 	if err != nil {
-		return analysis.Run{}, core2.MapError(err)
+		return analysis.Run{}, coregrpc.MapError(fmt.Errorf("%s: %w", op, err))
 	}
-	return runFromProto(run)
+
+	run, err := runFromProto(resp)
+	if err != nil {
+		return analysis.Run{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return run, nil
 }
 
 func (c *Client) StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.Writer) error {
 	stream, err := c.analysis.GetRunArchive(ctx, &corepb.RunID{RunId: runID.String()})
 	if err != nil {
-		return core2.MapError(err)
+		return coregrpc.MapError(err)
 	}
 
 	for {
@@ -88,7 +95,7 @@ func (c *Client) StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.W
 			return nil
 		}
 		if err != nil {
-			return core2.MapError(err)
+			return coregrpc.MapError(err)
 		}
 		if chunk == nil {
 			return fmt.Errorf("run archive chunk is nil: %w", errorsx.ErrInternal)
@@ -107,53 +114,72 @@ func (c *Client) StreamRunArchive(ctx context.Context, runID uuid.UUID, dst io.W
 	}
 }
 
-func (c *Client) ShareRun(ctx context.Context, callerID, runID uuid.UUID) error {
+func (c *Client) ShareRun(ctx context.Context, userID, runID uuid.UUID) error {
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		"x-user-id", callerID.String(),
+		"x-user-id", userID.String(),
 	))
 
 	_, err := c.analysis.ShareRun(ctx, &corepb.RunID{RunId: runID.String()})
-	return core2.MapError(err)
+	return coregrpc.MapError(err)
 }
 
-func (c *Client) DeleteRun(ctx context.Context, callerID, runID uuid.UUID) error {
+func (c *Client) DeleteRun(ctx context.Context, userID, runID uuid.UUID) error {
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		"x-user-id", callerID.String(),
+		"x-user-id", userID.String(),
 	))
 
 	_, err := c.analysis.DeleteRun(ctx, &corepb.RunID{RunId: runID.String()})
-	return core2.MapError(err)
+	return coregrpc.MapError(err)
 }
 
-func (c *Client) RunsPaged(ctx context.Context, callerID uuid.UUID, req analysis.RunsPagedRequest) (analysis.RunsPagedResponse, error) {
+func (c *Client) RunsPaged(ctx context.Context, userID uuid.UUID, req analysis.RunsPagedRequest) (analysis.RunsPagedResponse, error) {
+	const op = "runs paged"
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		"x-user-id", callerID.String(),
+		"x-user-id", userID.String(),
 	))
 
-	beforeIDStr := req.BeforeID.String()
+	var beforeID *string
+	if req.BeforeID != nil {
+		s := req.BeforeID.String()
+		beforeID = &s
+	}
 
-	resp, err := c.analysis.ListRunsPaged(ctx, &analysispb.ListRunsRequest{
-		Limit:    req.Limit,
-		BeforeId: &beforeIDStr,
-		Filter:   analysispb.RunFilter(req.Filter),
+	var scope analysispb.RunScope
+	switch req.Scope {
+	case 1:
+		scope = analysispb.RunScope_RUN_SCOPE_MINE
+	case 2:
+		scope = analysispb.RunScope_RUN_SCOPE_SHARED
+	case 3:
+		scope = analysispb.RunScope_RUN_SCOPE_ALL
+	default:
+		scope = analysispb.RunScope_RUN_SCOPE_UNSPECIFIED
+	}
+
+	resp, err := c.analysis.ListRunsPaged(ctx, &analysispb.ListRunsPagedRequest{
+		Limit:       req.Limit,
+		BeforeId:    beforeID,
+		OrderDirAsc: req.OrderDirAsc,
+		Scope:       scope,
+		Filter:      runsFilterToProto(req.Filter),
 	})
 	if err != nil {
-		return analysis.RunsPagedResponse{}, core2.MapError(err)
+		return analysis.RunsPagedResponse{}, coregrpc.MapError(err)
 	}
 
-	lsResp, err := listRunsResponseFromProto(resp)
+	respFromProto, err := runsPagedResponseFromProto(resp)
 	if err != nil {
-		return analysis.RunsPagedResponse{}, err
+		return analysis.RunsPagedResponse{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return lsResp, nil
+	return respFromProto, nil
 }
 
 func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
 	const op = "list available detectors"
 	resp, err := c.catalog.ListAvailableDetectors(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, core2.MapError(err)
+		return nil, coregrpc.MapError(err)
 	}
 	if resp == nil {
 		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
@@ -161,9 +187,9 @@ func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta,
 
 	res := make([]detect.DetectorMeta, 0, len(resp.Detectors))
 	for _, metaPb := range resp.Detectors {
-		detMeta, ok := core2.DetectorMetaFromProto(metaPb)
-		if !ok {
-			return nil, fmt.Errorf("%s: meta is nil: %w", op, errorsx.ErrInternal)
+		detMeta, err := coregrpc.DetectorMetaFromProto(metaPb)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 		res = append(res, detMeta)
 	}
@@ -174,7 +200,7 @@ func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error
 	const op = "list available exchanges"
 	resp, err := c.catalog.ListAvailableExchanges(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, core2.MapError(err)
+		return nil, coregrpc.MapError(err)
 	}
 	if resp == nil {
 		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
@@ -182,7 +208,7 @@ func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error
 
 	res := make([]exchange.Meta, 0, len(resp.ExchangeMetas))
 	for _, metaPb := range resp.ExchangeMetas {
-		exMeta, err := core2.ExchangeMetaFromProto(metaPb)
+		exMeta, err := coregrpc.ExchangeMetaFromProto(metaPb)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", op, errorsx.ErrInternal)
 		}

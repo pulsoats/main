@@ -9,6 +9,15 @@ import (
 	"github.com/pulsoats/core/run"
 )
 
+type Run struct {
+	BaseRun          run.Base
+	Fees             market.TakerMakerFees
+	SumProfitPercent float64
+	AvgProfitPercent float64
+	IsShared         bool
+	SharedAt         *time.Time
+}
+
 type NewRunRequest struct {
 	Market   market.Spec
 	Interval string
@@ -18,30 +27,36 @@ type NewRunRequest struct {
 	Fees     *market.TakerMakerFees
 }
 
-type Run struct {
-	BaseRun          run.Base
-	AvgProfitPercent float64
-	IsShared         bool
-	SharedAt         *time.Time
+type RunsFilter struct {
+	Exchanges     []string
+	Categories    []string
+	Symbols       []string
+	Intervals     []string
+	DetectorCodes []string
+	Statuses      []int
+
+	MinSignals      *int64
+	MaxSignals      *int64
+	MinAvgProfitPct *float64
+	MaxAvgProfitPct *float64
+
+	FirstCandleFrom *time.Time
+	LastCandleTo    *time.Time
+
+	CreatedFrom *time.Time
+	CreatedTo   *time.Time
 }
 
-type RunFilter int32
-
-const (
-	RunFilterUnspecified RunFilter = 0
-	RunFilterMine        RunFilter = 1
-	RunFilterShared      RunFilter = 2
-	RunFilterAll         RunFilter = 3
-)
-
 type RunsPagedRequest struct {
-	Limit    int32
-	BeforeID *uuid.UUID
-	Filter   RunFilter
+	Limit       int32
+	BeforeID    *uuid.UUID
+	OrderDirAsc bool
+	Scope       int
+	Filter      *RunsFilter
 }
 
 type RunsPagedResponse struct {
 	Runs         []Run
-	NextBeforeID *uuid.UUID
 	HasMore      bool
+	NextBeforeID *uuid.UUID
 }

@@ -313,61 +313,61 @@ func (h *Handler) StopAll(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) Runs(c *gin.Context) {
+func (h *Handler) RunsPaged(c *gin.Context) {
 	accountID, ok := h.resolveAccountID(c)
 	if !ok {
 		return
 	}
 
-	var q listRunsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
+	var req runsPagedRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
 		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
-	if q.Limit <= 0 {
-		q.Limit = 20
+	if req.Limit <= 0 {
+		req.Limit = 20
 	}
 
-	resp, err := h.app.RunsPaged(c.Request.Context(), accountID, domainlive.RunsRequest{
-		Limit:    q.Limit,
-		BeforeID: q.BeforeID,
-	})
+	domainReq, err := runsPagedRequestFromDTO(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, listRunsToResponse(resp))
+	resp, err := h.app.RunsPaged(c.Request.Context(), accountID, domainReq)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, runsPagedToResponse(resp))
 }
 
-func (h *Handler) Signals(c *gin.Context) {
+func (h *Handler) SignalsPaged(c *gin.Context) {
 	accountID, ok := h.resolveAccountID(c)
 	if !ok {
 		return
 	}
 
-	var q listSignalsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
+	var req signalsPagedRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
 		errhttp.RespondError(c, fmt.Errorf("%w: %s", errorsx.ErrInvalidArgument, err.Error()))
 		return
 	}
-	if q.Limit <= 0 {
-		q.Limit = 50
-	}
 
-	filter := &domainlive.SignalsFilter{RunID: q.RunID}
-
-	resp, err := h.app.SignalsPaged(c.Request.Context(), accountID, domainlive.SignalsPagedRequest{
-		Limit:    q.Limit,
-		BeforeID: q.BeforeID,
-		Filter:   filter,
-	})
+	domainReq, err := signalsPagedRequestFromDTO(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, listSignalsToResponse(resp))
+	resp, err := h.app.SignalsPaged(c.Request.Context(), accountID, domainReq)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, signalsPagedToResponse(resp))
 }
 
 // --- SSE stream ---
@@ -426,6 +426,50 @@ func (h *Handler) StreamEvents(c *gin.Context) {
 				continue
 			}
 			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, data)
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *Handler) StreamWorkerStats(c *gin.Context) {
+	accountID, ok := h.resolveAccountID(c)
+	if !ok {
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		errhttp.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
+		return
+	}
+
+	statsCh, err := h.app.SubscribeWorkerStats(c.Request.Context(), accountID)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case stats, open := <-statsCh:
+			if !open {
+				fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+				flusher.Flush()
+				return
+			}
+			data, err := json.Marshal(workerStatsToResponse(stats))
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(c.Writer, "event: stats\ndata: %s\n\n", data)
 			flusher.Flush()
 		}
 	}

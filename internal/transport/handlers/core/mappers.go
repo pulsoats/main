@@ -7,7 +7,6 @@ import (
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/core/market"
 	"github.com/pulsoats/core/run"
-	domainsystem "github.com/pulsoats/main/internal/domain/system"
 )
 
 func MarketSpecFromRequest(req MarketSpecRequest) market.Spec {
@@ -86,7 +85,7 @@ func AvailableExchangesToResponse(exchanges []exchange.Meta) AvailableExchangesR
 }
 
 func BaseRunToResponse(base run.Base) BaseRunResponse {
-	return BaseRunResponse{
+	resp := BaseRunResponse{
 		ID:           base.ID,
 		Status:       RunStatusToResponse(base.Status),
 		Market:       MarketSpecToResponse(base.Market),
@@ -96,24 +95,11 @@ func BaseRunToResponse(base run.Base) BaseRunResponse {
 		CreatedBy:    base.CreatedBy,
 		CreatedAt:    base.CreatedAt.Format(time.RFC3339),
 	}
-}
-
-func ServiceInfoToResponse(info domainsystem.Host) ServiceInfoResponse {
-	return ServiceInfoResponse{
-		ID:       info.ID,
-		Kind:     string(info.Kind),
-		Name:     info.Name,
-		Exchange: info.Exchange,
-		Account:  info.Account,
-		Version:  info.Version,
+	if !base.FirstCandleTime.IsZero() {
+		resp.FirstCandleTime = base.FirstCandleTime.Format(time.RFC3339)
 	}
-}
-
-// ServiceToResponse маппит domain Node (из БД) — с Addr, LastSeenAt, CreatedAt.
-func ServiceToResponse(svc domainsystem.Node) ServiceInfoResponse {
-	r := ServiceInfoToResponse(svc.Host)
-	r.Addr = svc.Addr
-	r.LastSeenAt = svc.LastSeenAt.Format(time.RFC3339)
-	r.CreatedAt = svc.CreatedAt.Format(time.RFC3339)
-	return r
+	if !base.LastCandleTime.IsZero() {
+		resp.LastCandleTime = base.LastCandleTime.Format(time.RFC3339)
+	}
+	return resp
 }

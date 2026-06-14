@@ -1,6 +1,6 @@
 module github.com/pulsoats/main
 
-go 1.25.3
+go 1.26.2
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
@@ -16,8 +16,8 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
-	github.com/pulsoats/contracts v1.11.0
-	github.com/pulsoats/core v1.15.0
+	github.com/pulsoats/contracts v1.13.0
+	github.com/pulsoats/core v1.15.5
 	github.com/rs/zerolog v1.34.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
