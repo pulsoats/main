@@ -34,7 +34,7 @@ type runsPagedRequest struct {
 	Limit       int32  `form:"limit"`
 	BeforeID    string `form:"before_id"`
 	OrderDirAsc bool   `form:"order_dir_asc"`
-	Scope       int    `form:"scope" binding:"required, oneof=1 2 3"`
+	Scope       int    `form:"scope" binding:"required,oneof=1 2 3"`
 
 	Exchanges     []string `form:"exchanges"`
 	Categories    []string `form:"categories"`
