@@ -742,6 +742,24 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/InternalError'}
 
+  /accounts/{account_id}/worker/update:
+    post:
+      summary: Обновить воркер
+      description: Останавливает контейнер, скачивает свежий образ и поднимает новый контейнер. Асинхронно — возвращает 202.
+      tags: [workers]
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/AccountID'}]
+      responses:
+        '202':
+          description: Обновление начато
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Worker'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
   /accounts/{account_id}/worker/stop:
     post:
       summary: Остановить воркер
