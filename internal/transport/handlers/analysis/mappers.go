@@ -40,6 +40,7 @@ func newRunRequestFromRequest(req newRunRequest) (analysis.NewRunRequest, error)
 		To:       toTime,
 		Detector: detect.DetectorConfig{
 			Code:      req.Detector.Code,
+			Version:   req.Detector.Version,
 			OptsLabel: req.Detector.OptsLabel,
 			Opts:      req.Detector.Opts,
 		},
