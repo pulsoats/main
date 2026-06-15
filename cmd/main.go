@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -204,7 +205,8 @@ func main() {
 	if ghcrToken == "" {
 		zlogger.Fatal().Msg("GHCR_TOKEN is required")
 	}
-	dockerAuthBase64 := base64.StdEncoding.EncodeToString([]byte(ghcrUser + ":" + ghcrToken))
+	dockerAuthJSON, _ := json.Marshal(map[string]string{"username": ghcrUser, "password": ghcrToken})
+	dockerAuthBase64 := base64.StdEncoding.EncodeToString(dockerAuthJSON)
 
 	liveImageURL := strings.TrimSpace(os.Getenv(envLiveImageURL))
 	if liveImageURL == "" {
