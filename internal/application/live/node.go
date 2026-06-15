@@ -42,6 +42,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 	node := live.Node{
 		ID:           id,
 		Exchange:     req.Exchange,
+		Host:         req.Host,
 		DockerPort:   req.DockerPort,
 		Region:       req.Region,
 		MaxWorkers:   req.MaxWorkers,
