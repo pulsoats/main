@@ -131,7 +131,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 			return
 		}
 
-		if err = client.HealthCheck(deployCtx); err != nil {
+		if err = waitHealthy(deployCtx, client, 30*time.Second, 2*time.Second); err != nil {
 			fail(worker.ID, err)
 			return
 		}
@@ -639,4 +639,27 @@ func (a *Application) StreamEvents(ctx context.Context, accountID uuid.UUID) (<-
 	}
 
 	return ch, nil
+}
+
+type healthChecker interface {
+	HealthCheck(ctx context.Context) error
+}
+
+func waitHealthy(ctx context.Context, c healthChecker, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if lastErr = c.HealthCheck(ctx); lastErr == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+	return fmt.Errorf("worker not healthy after %s: %w", timeout, lastErr)
 }
