@@ -125,6 +125,7 @@ func NewRouter(cfg Config) (*gin.Engine, error) {
 	acc.POST("/worker", cfg.LiveHandler.CreateWorker)
 	acc.POST("/worker/start", cfg.LiveHandler.StartWorker)
 	acc.POST("/worker/stop", cfg.LiveHandler.StopWorker)
+	acc.POST("/worker/update", cfg.LiveHandler.UpdateWorker)
 	acc.GET("/worker/metrics", cfg.LiveHandler.StreamWorkerMetrics)
 	acc.GET("/worker/stats", cfg.LiveHandler.StreamWorkerStats)
 

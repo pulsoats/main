@@ -46,6 +46,21 @@ func (h *Handler) StartWorker(c *gin.Context) {
 	c.JSON(http.StatusAccepted, workerToResponse(worker))
 }
 
+func (h *Handler) UpdateWorker(c *gin.Context) {
+	accountID, ok := h.resolveAccountID(c)
+	if !ok {
+		return
+	}
+
+	worker, err := h.app.UpdateWorker(c.Request.Context(), accountID)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, workerToResponse(worker))
+}
+
 func (h *Handler) StopWorker(c *gin.Context) {
 	accountID, ok := h.resolveAccountID(c)
 	if !ok {
