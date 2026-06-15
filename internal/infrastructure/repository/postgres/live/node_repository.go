@@ -24,7 +24,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, s *live.Node) error {
 	const op = "create node"
 	const query = `
 	INSERT INTO nodes (id, name, exchange, host, docker_port, region, dsn, max_workers, status)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	RETURNING created_at;`
 
 	q := r.qp.Get(ctx)
