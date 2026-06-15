@@ -109,6 +109,14 @@ func (c *Client) DeployDB(ctx context.Context, containerName, dbUser, dbPassword
 	}
 	dsn := config.ConnString()
 
+	pullResp, err := c.apiClient.ImagePull(ctx, c.dbRefStr, client.ImagePullOptions{})
+	if err != nil {
+		return "", fmt.Errorf("%s: image pull: %w", op, errors.Join(errorsx.ErrInternal, err))
+	}
+	if err = pullResp.Wait(ctx); err != nil {
+		return "", fmt.Errorf("%s: image pull wait: %w", op, errors.Join(errorsx.ErrInternal, err))
+	}
+
 	createResp, err := c.apiClient.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name:  containerName,
 		Image: c.dbRefStr,
