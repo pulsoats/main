@@ -94,50 +94,30 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		return live.Worker{}, err
 	}
 
-	fail := func(workerID uuid.UUID, deployErr error) {
-		failCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		var deployErrStr *string
-		if deployErr != nil {
-			s := deployErr.Error()
-			deployErrStr = &s
-		}
-
-		if err := a.workerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, deployErrStr); err != nil {
-			a.logger.Error("failed to update worker status",
-				"op", op,
-				"repo_error", err.Error(),
-				"deploy_error", deployErr,
-				"worker_id", workerID,
-			)
-		}
-	}
-
 	go func() {
 		deployCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
 		containerID, port, err := dockerClient.DeployWorker(deployCtx, workerName, env)
 		if err != nil {
-			fail(worker.ID, err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
 		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
 		client, err := a.workerClientFactory.NewClient(grpcAddr)
 		if err != nil {
-			fail(worker.ID, err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
 		if err = waitHealthy(deployCtx, client, 30*time.Second, 2*time.Second); err != nil {
-			fail(worker.ID, err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
 		if err = a.workerRepo.UpdateWorkerDeploymentByID(deployCtx, worker.ID, containerID, port); err != nil {
-			fail(worker.ID, err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
@@ -146,7 +126,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		a.clientsMu.Unlock()
 
 		if err = a.workerRepo.UpdateWorkerStatusByID(deployCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
-			fail(worker.ID, err)
+			a.failWorker(worker.ID, op, err)
 		}
 	}()
 
@@ -208,8 +188,68 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 		return live.Worker{}, fmt.Errorf("%s: worker already running: %w", op, errorsx.ErrConflict)
 	}
 
-	if worker.Status != live.WorkerStatusStopped {
-		return live.Worker{}, fmt.Errorf("%s: worker clientsMust be stopped to start: %w", op, errorsx.ErrConflict)
+	a.clientsMu.RLock()
+	dockerClient, ok := a.nodeClients[worker.NodeID]
+	a.clientsMu.RUnlock()
+	if !ok {
+		return live.Worker{}, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
+	}
+
+	if err = a.workerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusDeploying, nil); err != nil {
+		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	worker.Status = live.WorkerStatusDeploying
+
+	go func() {
+		startCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		port, err := dockerClient.StartWorker(startCtx, worker.ContainerID)
+		if err != nil {
+			a.failWorker(worker.ID, op, err)
+			return
+		}
+
+		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
+		client, err := a.workerClientFactory.NewClient(grpcAddr)
+		if err != nil {
+			a.failWorker(worker.ID, op, err)
+			return
+		}
+
+		if err = client.HealthCheck(startCtx); err != nil {
+			a.failWorker(worker.ID, op, err)
+			return
+		}
+
+		if err = a.workerRepo.UpdateWorkerDeploymentByID(startCtx, worker.ID, worker.ContainerID, port); err != nil {
+			a.failWorker(worker.ID, op, err)
+			return
+		}
+
+		a.clientsMu.Lock()
+		a.workerClients[accountID] = client
+		a.clientsMu.Unlock()
+
+		if err = a.workerRepo.UpdateWorkerStatusByID(startCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
+			a.failWorker(worker.ID, op, err)
+		}
+	}()
+
+	return worker, nil
+}
+
+func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (live.Worker, error) {
+	const op = "update worker"
+
+	worker, err := a.workerRepo.WorkerByAccountID(ctx, accountID)
+	if err != nil {
+		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if worker.Status == live.WorkerStatusRunning {
+		return live.Worker{}, fmt.Errorf("%s: worker already running: %w", op, errorsx.ErrConflict)
 	}
 
 	a.clientsMu.RLock()
@@ -225,50 +265,30 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 
 	worker.Status = live.WorkerStatusDeploying
 
-	fail := func(deployErr error) {
-		failCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		var deployErrStr *string
-		if deployErr != nil {
-			s := deployErr.Error()
-			deployErrStr = &s
-		}
-
-		if err := a.workerRepo.UpdateWorkerStatusByID(failCtx, worker.ID, live.WorkerStatusFailed, deployErrStr); err != nil {
-			a.logger.Error("failed to update worker status",
-				"op", op,
-				"repo_error", err.Error(),
-				"deploy_error", deployErr,
-				"worker_id", worker.ID,
-			)
-		}
-	}
-
 	go func() {
-		startCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		port, err := dockerClient.StartWorker(startCtx, worker.ContainerID)
+		newContainerID, port, err := dockerClient.UpdateWorker(updateCtx, worker.ContainerID)
 		if err != nil {
-			fail(err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
 		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
 		client, err := a.workerClientFactory.NewClient(grpcAddr)
 		if err != nil {
-			fail(err)
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
-		if err = client.HealthCheck(startCtx); err != nil {
-			fail(err)
+		if err = waitHealthy(updateCtx, client, 30*time.Second, 2*time.Second); err != nil {
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
-		if err = a.workerRepo.UpdateWorkerDeploymentByID(startCtx, worker.ID, worker.ContainerID, port); err != nil {
-			fail(err)
+		if err = a.workerRepo.UpdateWorkerDeploymentByID(updateCtx, worker.ID, newContainerID, port); err != nil {
+			a.failWorker(worker.ID, op, err)
 			return
 		}
 
@@ -276,8 +296,8 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 		a.workerClients[accountID] = client
 		a.clientsMu.Unlock()
 
-		if err = a.workerRepo.UpdateWorkerStatusByID(startCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
-			fail(err)
+		if err = a.workerRepo.UpdateWorkerStatusByID(updateCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
+			a.failWorker(worker.ID, op, err)
 		}
 	}()
 
@@ -639,6 +659,26 @@ func (a *Application) StreamEvents(ctx context.Context, accountID uuid.UUID) (<-
 	}
 
 	return ch, nil
+}
+
+func (a *Application) failWorker(workerID uuid.UUID, op string, deployErr error) {
+	failCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var deployErrStr *string
+	if deployErr != nil {
+		s := deployErr.Error()
+		deployErrStr = &s
+	}
+
+	if err := a.workerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, deployErrStr); err != nil {
+		a.logger.Error("failed to update worker status",
+			"op", op,
+			"repo_error", err.Error(),
+			"deploy_error", deployErr,
+			"worker_id", workerID,
+		)
+	}
 }
 
 type healthChecker interface {

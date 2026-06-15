@@ -162,7 +162,6 @@ func signalToResponse(s detect.Signal) signalResponse {
 		TakeProfitValue:   s.TakeProfitValue,
 		StopLossValue:     s.StopLossValue,
 		ExpectedReturnPPM: s.ExpectedReturnPPM,
-		Fingerprint:       s.Fingerprint,
 		CreatedAt:         s.CreatedAt,
 	}
 }

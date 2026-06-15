@@ -141,7 +141,6 @@ type signalResponse struct {
 	TakeProfitValue   int64                   `json:"takeProfitValue"`
 	StopLossValue     int64                   `json:"stopLossValue"`
 	ExpectedReturnPPM int64                   `json:"expectedReturnPpm"`
-	Fingerprint       uuid.UUID               `json:"fingerprint"`
 	CreatedAt         int64                   `json:"createdAt"`
 }
 
