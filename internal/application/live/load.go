@@ -25,7 +25,7 @@ func (a *Application) LoadFromDB(ctx context.Context) []error {
 		if node.Status != live.NodeStatusActive {
 			continue
 		}
-		addr := net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
+		addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
 		client, err := a.dockerFactory.NewClient(addr)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("load from db: node %s: docker client: %w", node.ID, err))

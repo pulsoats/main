@@ -69,7 +69,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		envvars.LiveGRPCTLSKey + "=" + string(key),
 	}
 
-	addr := net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
+	addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
 	dockerClient, err := a.dockerFactory.NewClient(addr)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)

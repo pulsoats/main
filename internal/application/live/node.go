@@ -22,7 +22,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 		return live.Node{}, fmt.Errorf("%s: docker port: %w", op, errorsx.ErrInvalidArgument)
 	}
 
-	addr := net.JoinHostPort(req.Host, strconv.Itoa(req.DockerPort))
+	addr := "tcp://" + net.JoinHostPort(req.Host, strconv.Itoa(req.DockerPort))
 
 	dockerClient, err := a.dockerFactory.NewClient(addr)
 	if err != nil {
@@ -213,7 +213,7 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	addr := net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
+	addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
 	dockerClient, err := a.dockerFactory.NewClient(addr)
 	if err != nil {
 		return fmt.Errorf("%s: docker: %w", op, err)
