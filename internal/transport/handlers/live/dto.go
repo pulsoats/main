@@ -133,6 +133,7 @@ type signalResponse struct {
 	RunID             uuid.UUID               `json:"runId"`
 	Market            core.MarketSpecResponse `json:"market"`
 	DetectorCode      string                  `json:"detectorCode"`
+	DetectorVersion   string                  `json:"detectorVersion"`
 	DetectorOptsLabel string                  `json:"detectorOptsLabel"`
 	CandleTime        int64                   `json:"candleTime"`
 	CandleValue       int64                   `json:"candleValue"`

@@ -1126,6 +1126,7 @@ components:
       required: [code]
       properties:
         code: {type: string}
+        version: {type: string}
         optsLabel: {type: string}
         opts:
           type: object
@@ -1345,6 +1346,7 @@ components:
         runId: {type: string, format: uuid}
         market: {$ref: '#/components/schemas/MarketSpec'}
         detectorCode: {type: string}
+        detectorVersion: {type: string}
         detectorOptsLabel: {type: string}
         candleTime: {type: integer, format: int64, description: Unix ms}
         candleValue: {type: integer, format: int64}

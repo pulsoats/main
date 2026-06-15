@@ -154,6 +154,7 @@ func signalToResponse(s detect.Signal) signalResponse {
 		RunID:             s.RunID,
 		Market:            core.MarketSpecToResponse(s.Market),
 		DetectorCode:      s.DetectorCode,
+		DetectorVersion:   s.DetectorVersion,
 		DetectorOptsLabel: s.DetectorOptsLabel,
 		CandleTime:        s.CandleTime,
 		CandleValue:       s.CandleValue,
