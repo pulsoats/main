@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/market"
 	corerun "github.com/pulsoats/core/run"
 )
 
@@ -59,8 +60,16 @@ type SignalsPagedRequest struct {
 	Filter      *SignalsFilter
 }
 
+// EnrichedSignal дополняет detect.Signal данными прогона (market, interval),
+// полученными из proto-ответа live-сервиса.
+type EnrichedSignal struct {
+	detect.Signal
+	Market   market.Spec
+	Interval market.Interval
+}
+
 type SignalsPagedResponse struct {
-	Signals      []detect.Signal
+	Signals      []EnrichedSignal
 	HasMore      bool
 	NextBeforeID *uuid.UUID
 }
@@ -79,7 +88,7 @@ type RunEvent struct {
 }
 
 type SignalEvent struct {
-	Signal detect.Signal
+	Signal EnrichedSignal
 }
 
 func (RunEvent) eventPayload()    {}

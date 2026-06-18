@@ -47,55 +47,57 @@ func runFromProto(pb *livepb.Run) (live.Run, error) {
 	}, nil
 }
 
-func signalFromProto(pb *livepb.Signal) (detect.Signal, error) {
+func signalFromProto(pb *livepb.Signal) (live.EnrichedSignal, error) {
 	const op = "signal from proto"
 	if pb == nil {
-		return detect.Signal{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	id, err := uuid.Parse(pb.Id)
 	if err != nil {
-		return detect.Signal{}, fmt.Errorf("%s: invalid signal_id: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: invalid signal_id: %w", op, errorsx.ErrInternal)
 	}
 
 	runID, err := uuid.Parse(pb.RunId)
 	if err != nil {
-		return detect.Signal{}, fmt.Errorf("%s: invalid run_id: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: invalid run_id: %w", op, errorsx.ErrInternal)
 	}
 
 	marketSpec, ok := core.MarketSpecFromProto(pb.Market)
 	if !ok {
-		return detect.Signal{}, fmt.Errorf("%s: marketSpec is nil: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: marketSpec is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	interval, ok := market.ParseInterval(pb.Interval)
 	if !ok {
-		return detect.Signal{}, fmt.Errorf("%s: unexpected interval: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: unexpected interval: %w", op, errorsx.ErrInternal)
 	}
 
 	if pb.CandleTime == nil {
-		return detect.Signal{}, fmt.Errorf("%s: candle_time is nil: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: candle_time is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	if pb.CreatedAt == nil {
-		return detect.Signal{}, fmt.Errorf("%s: created_at is nil: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: created_at is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	return detect.Signal{
-		ID:                id,
-		RunID:             runID,
-		Market:            marketSpec,
-		Interval:          interval,
-		DetectorCode:      pb.DetectorCode,
-		DetectorVersion:   pb.DetectorVersion,
-		DetectorOptsLabel: pb.DetectorOptsLabel,
-		CandleTime:        pb.CandleTime.AsTime().UnixMilli(),
-		CandleValue:       pb.CandleValue,
-		BuyValue:          pb.BuyValue,
-		TakeProfitValue:   pb.TakeProfitValue,
-		StopLossValue:     pb.StopLossValue,
-		ExpectedReturnPPM: pb.ExpectedReturnPpm,
-		CreatedAt:         pb.CreatedAt.AsTime().UnixMilli(),
+	return live.EnrichedSignal{
+		Signal: detect.Signal{
+			ID:                id,
+			RunID:             runID,
+			DetectorCode:      pb.DetectorCode,
+			DetectorVersion:   pb.DetectorVersion,
+			DetectorOptsLabel: pb.DetectorOptsLabel,
+			CandleTime:        pb.CandleTime.AsTime().UnixMilli(),
+			CandleValue:       pb.CandleValue,
+			BuyValue:          pb.BuyValue,
+			TakeProfitValue:   pb.TakeProfitValue,
+			StopLossValue:     pb.StopLossValue,
+			ExpectedReturnPPM: pb.ExpectedReturnPpm,
+			CreatedAt:         pb.CreatedAt.AsTime().UnixMilli(),
+		},
+		Market:   marketSpec,
+		Interval: interval,
 	}, nil
 }
 
@@ -244,7 +246,7 @@ func signalsPagedResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.Si
 		return live.SignalsPagedResponse{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	signals := make([]detect.Signal, 0, len(pb.Signals))
+	signals := make([]live.EnrichedSignal, 0, len(pb.Signals))
 	for _, sigPb := range pb.Signals {
 		sig, err := signalFromProto(sigPb)
 		if err != nil {

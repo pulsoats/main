@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
 	corerun "github.com/pulsoats/core/run"
 	"github.com/pulsoats/main/internal/domain/live"
@@ -148,7 +147,7 @@ func runsPagedToResponse(resp live.RunsPagedResponse) runsPagedResponse {
 	}
 }
 
-func signalToResponse(s detect.Signal) signalResponse {
+func signalToResponse(s live.EnrichedSignal) signalResponse {
 	return signalResponse{
 		ID:                s.ID,
 		RunID:             s.RunID,
