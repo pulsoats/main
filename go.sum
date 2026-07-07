@@ -138,6 +138,8 @@ github.com/pulsoats/contracts v1.13.0 h1:kfmDP8fPDjMgc5TZNrD3VEUwVq/dLJ1zTrP4zvv
 github.com/pulsoats/contracts v1.13.0/go.mod h1:tALJFOoAijHLIKzqkTYDbVEou0fmUqfUWSsvxGS1XOU=
 github.com/pulsoats/core v1.15.5 h1:rRsaPL979unBlfwQ8Y3HTfKYAfaEqplbQfReDyJN7ec=
 github.com/pulsoats/core v1.15.5/go.mod h1:6yUNEmr/1UyDDIKzeTo/80BjTYUdD3YK2OJK8hMGG5g=
+github.com/pulsoats/core v1.16.3 h1:DPKq4ZFlCKk2V+xp1NGlhvTmbJeMZnrGU7QEE7r8/M8=
+github.com/pulsoats/core v1.16.3/go.mod h1:f7cZavxmehKgu9/sDwCreAA4EbeuPq7V8F1YN7kRN44=
 github.com/quic-go/qpack v0.6.0 h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=
 github.com/quic-go/qpack v0.6.0/go.mod h1:lUpLKChi8njB4ty2bFLX2x4gzDqXwUpaO1DP9qMDZII=
 github.com/quic-go/quic-go v0.59.0 h1:OLJkp1Mlm/aS7dpKgTc6cnpynnD2Xg7C1pwL6vy/SAw=

@@ -155,13 +155,13 @@ func signalToResponse(s live.EnrichedSignal) signalResponse {
 		DetectorCode:      s.DetectorCode,
 		DetectorVersion:   s.DetectorVersion,
 		DetectorOptsLabel: s.DetectorOptsLabel,
-		CandleTime:        s.CandleTime,
+		CandleTime:        s.CandleTime.Unix(),
 		CandleValue:       s.CandleValue,
 		BuyValue:          s.BuyValue,
 		TakeProfitValue:   s.TakeProfitValue,
 		StopLossValue:     s.StopLossValue,
 		ExpectedReturnPPM: s.ExpectedReturnPPM,
-		CreatedAt:         s.CreatedAt,
+		CreatedAt:         s.CreatedAt.Unix(),
 	}
 }
 
