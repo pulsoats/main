@@ -38,12 +38,14 @@ func runFromProto(pb *analysispb.Run) (analysis.Run, error) {
 	fees, _ := core.FeesFromProto(pb.Fees)
 
 	return analysis.Run{
-		BaseRun:      base,
-		Fees:         fees,
-		SumProfitPPM: pb.SumProfitPpm,
-		AvgProfitPPM: pb.AvgProfitPpm,
-		IsShared:     pb.IsShared,
-		SharedAt:     core.TimePtrFromProto(pb.GetSharedAt()),
+		BaseRun:         base,
+		Fees:            fees,
+		SumProfitPPM:    pb.SumProfitPpm,
+		AvgProfitPPM:    pb.AvgProfitPpm,
+		DisableStopLoss: pb.DisableStopLoss,
+		DisableRepeats:  pb.DisableRepeats,
+		IsShared:        pb.IsShared,
+		SharedAt:        core.TimePtrFromProto(pb.GetSharedAt()),
 	}, nil
 }
 
