@@ -13,12 +13,14 @@ import (
 
 func mapNewRunRequest(req analysis.NewRunRequest) *analysispb.NewRunRequest {
 	return &analysispb.NewRunRequest{
-		Market:         core.MarketSpecToProto(req.Market),
-		Interval:       req.Interval,
-		From:           timestamppb.New(req.From),
-		To:             timestamppb.New(req.To),
-		DetectorConfig: core.DetectorConfigToProto(req.Detector),
-		Fees:           core.FeesToProto(req.Fees),
+		Market:          core.MarketSpecToProto(req.Market),
+		Interval:        req.Interval,
+		From:            timestamppb.New(req.From),
+		To:              timestamppb.New(req.To),
+		DetectorConfig:  core.DetectorConfigToProto(req.Detector),
+		Fees:            core.FeesToProto(req.Fees),
+		DisableStopLoss: req.DisableStopLoss,
+		DisableRepeats:  req.DisableRepeats,
 	}
 }
 
