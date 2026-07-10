@@ -8,26 +8,30 @@ import (
 )
 
 type newRunRequest struct {
-	Market   core.MarketSpecRequest     `json:"market" binding:"required"`
-	Interval string                     `json:"interval" binding:"required"`
-	FromTime string                     `json:"fromTime" binding:"required"`
-	ToTime   string                     `json:"toTime" binding:"required"`
-	Detector core.DetectorConfigRequest `json:"detector" binding:"required"`
-	Fees     *feesRequest               `json:"fees,omitempty"`
+	Market          core.MarketSpecRequest     `json:"market" binding:"required"`
+	Interval        string                     `json:"interval" binding:"required"`
+	FromTime        string                     `json:"fromTime" binding:"required"`
+	ToTime          string                     `json:"toTime" binding:"required"`
+	Detector        core.DetectorConfigRequest `json:"detector" binding:"required"`
+	Fees            *feesRequest               `json:"fees,omitempty"`
+	DisableStopLoss bool                       `json:"disableStopLoss"`
+	DisableRepeats  bool                       `json:"disableRepeats"`
 }
 
 type feesRequest struct {
-	TakerFee float64 `json:"takerFee" binding:"required"`
-	MakerFee float64 `json:"makerFee" binding:"required"`
+	TakerFeePct float64 `json:"takerFeePct" binding:"required"`
+	MakerFeePct float64 `json:"makerFeePct" binding:"required"`
 }
 
 type runResponse struct {
 	core.BaseRunResponse
-	SumProfitPercent float64   `json:"sumProfitPercent"`
-	AvgProfitPercent float64   `json:"avgProfitPercent"`
-	IsShared         bool      `json:"isShared"`
-	SharedAt         *string   `json:"sharedAt"`
-	ServiceID        uuid.UUID `json:"serviceId"`
+	SumProfitPct    float64   `json:"sumProfitPct"`
+	AvgProfitPct    float64   `json:"avgProfitPct"`
+	DisableStopLoss bool      `json:"disableStopLoss"`
+	DisableRepeats  bool      `json:"disableRepeats"`
+	IsShared        bool      `json:"isShared"`
+	SharedAt        *string   `json:"sharedAt"`
+	ServiceID       uuid.UUID `json:"serviceId"`
 }
 
 type runsPagedRequest struct {
@@ -48,6 +52,9 @@ type runsPagedRequest struct {
 
 	MinAvgProfitPct *float64 `form:"min_avg_profit_pct"`
 	MaxAvgProfitPct *float64 `form:"max_avg_profit_pct"`
+
+	DisableStopLoss *bool `form:"disable_stop_loss"`
+	DisableRepeats  *bool `form:"disable_repeats"`
 
 	FirstCandleFrom *time.Time `form:"first_candle_from"` // RFC3339 по умолчанию
 	LastCandleTo    *time.Time `form:"last_candle_to"`

@@ -93,9 +93,9 @@ type workersResponse struct {
 
 type runResponse struct {
 	core.BaseRunResponse
-	SumProfitPercent float64 `json:"sumProfitPercent"`
-	FinishedAt       *string `json:"finishedAt,omitempty"`
-	FinishedBy       *string `json:"finishedBy,omitempty"`
+	SumProfitPct float64 `json:"sumProfitPct"`
+	FinishedAt   *string `json:"finishedAt,omitempty"`
+	FinishedBy   *string `json:"finishedBy,omitempty"`
 }
 
 type newRunRequest struct {
@@ -140,7 +140,7 @@ type signalResponse struct {
 	BuyValue          int64                   `json:"buyValue"`
 	TakeProfitValue   int64                   `json:"takeProfitValue"`
 	StopLossValue     int64                   `json:"stopLossValue"`
-	ExpectedReturnPPM int64                   `json:"expectedReturnPpm"`
+	ExpectedReturnPct float64                 `json:"expectedReturnPct"`
 	CreatedAt         int64                   `json:"createdAt"`
 }
 

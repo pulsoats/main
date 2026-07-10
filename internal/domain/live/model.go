@@ -11,9 +11,9 @@ import (
 
 type Run struct {
 	corerun.Base
-	SumProfitPercent float64
-	FinishedAt       *time.Time
-	FinishedBy       *uuid.UUID
+	SumProfitPPM int64
+	FinishedAt   *time.Time
+	FinishedBy   *uuid.UUID
 }
 
 type RunsFilter struct {

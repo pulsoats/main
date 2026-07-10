@@ -36,12 +36,12 @@ func runFromProto(pb *analysispb.Run) (analysis.Run, error) {
 	fees, _ := core.FeesFromProto(pb.Fees)
 
 	return analysis.Run{
-		BaseRun:          base,
-		Fees:             fees,
-		SumProfitPercent: float64(pb.SumProfitPpm) / float64(units.PPM) * 100,
-		AvgProfitPercent: float64(pb.AvgProfitPpm) / float64(units.PPM) * 100,
-		IsShared:         pb.IsShared,
-		SharedAt:         core.TimePtrFromProto(pb.GetSharedAt()),
+		BaseRun:      base,
+		Fees:         fees,
+		SumProfitPPM: pb.SumProfitPpm,
+		AvgProfitPPM: pb.AvgProfitPpm,
+		IsShared:     pb.IsShared,
+		SharedAt:     core.TimePtrFromProto(pb.GetSharedAt()),
 	}, nil
 }
 
@@ -64,8 +64,10 @@ func runsFilterToProto(f *analysis.RunsFilter) *analysispb.ListRunsFilter {
 		Statuses:        statuses,
 		MinSignals:      f.MinSignals,
 		MaxSignals:      f.MaxSignals,
-		MinAvgProfitPpm: pctPtrToPpmPtr(f.MinAvgProfitPct),
-		MaxAvgProfitPpm: pctPtrToPpmPtr(f.MaxAvgProfitPct),
+		MinAvgProfitPpm: f.MinAvgProfitPPM,
+		MaxAvgProfitPpm: f.MaxAvgProfitPPM,
+		DisableStopLoss: f.DisableStopLoss,
+		DisableRepeats:  f.DisableRepeats,
 		FirstCandleFrom: core.TimePtrToProto(f.FirstCandleFrom),
 		LastCandleTo:    core.TimePtrToProto(f.LastCandleTo),
 		CreatedFrom:     core.TimePtrToProto(f.CreatedFrom),

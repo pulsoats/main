@@ -10,21 +10,25 @@ import (
 )
 
 type Run struct {
-	BaseRun          run.Base
-	Fees             market.TakerMakerFees
-	SumProfitPercent float64
-	AvgProfitPercent float64
-	IsShared         bool
-	SharedAt         *time.Time
+	BaseRun         run.Base
+	Fees            market.TakerMakerFees
+	SumProfitPPM    int64
+	AvgProfitPPM    int64
+	DisableStopLoss bool
+	DisableRepeats  bool
+	IsShared        bool
+	SharedAt        *time.Time
 }
 
 type NewRunRequest struct {
-	Market   market.Spec
-	Interval string
-	From     time.Time
-	To       time.Time
-	Detector detect.DetectorConfig
-	Fees     *market.TakerMakerFees
+	Market          market.Spec
+	Interval        string
+	From            time.Time
+	To              time.Time
+	Detector        detect.DetectorConfig
+	Fees            *market.TakerMakerFees
+	DisableStopLoss bool
+	DisableRepeats  bool
 }
 
 type RunsFilter struct {
@@ -37,8 +41,11 @@ type RunsFilter struct {
 
 	MinSignals      *int64
 	MaxSignals      *int64
-	MinAvgProfitPct *float64
-	MaxAvgProfitPct *float64
+	MinAvgProfitPPM *int64
+	MaxAvgProfitPPM *int64
+
+	DisableStopLoss *bool
+	DisableRepeats  *bool
 
 	FirstCandleFrom *time.Time
 	LastCandleTo    *time.Time

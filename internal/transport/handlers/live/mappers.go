@@ -87,8 +87,8 @@ func workerStatsToResponse(s live.WorkerStats) workerStatsResponse {
 
 func runToResponse(r live.Run) runResponse {
 	resp := runResponse{
-		BaseRunResponse:  core.BaseRunToResponse(r.Base),
-		SumProfitPercent: r.SumProfitPercent,
+		BaseRunResponse: core.BaseRunToResponse(r.Base),
+		SumProfitPct:    core.PPMToPercent(r.SumProfitPPM),
 	}
 	if r.FinishedAt != nil {
 		s := r.FinishedAt.Format(time.RFC3339)
@@ -160,7 +160,7 @@ func signalToResponse(s live.EnrichedSignal) signalResponse {
 		BuyValue:          s.BuyValue,
 		TakeProfitValue:   s.TakeProfitValue,
 		StopLossValue:     s.StopLossValue,
-		ExpectedReturnPPM: s.ExpectedReturnPPM,
+		ExpectedReturnPct: core.PPMToPercent(s.ExpectedReturnPPM),
 		CreatedAt:         s.CreatedAt.Unix(),
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/units"
 	"github.com/pulsoats/core/market"
 	corerun "github.com/pulsoats/core/run"
 	"github.com/pulsoats/main/internal/domain/analysis"
@@ -44,7 +43,9 @@ func newRunRequestFromRequest(req newRunRequest) (analysis.NewRunRequest, error)
 			OptsLabel: req.Detector.OptsLabel,
 			Opts:      req.Detector.Opts,
 		},
-		Fees: feesFromDTO(req.Fees),
+		Fees:            feesFromDTO(req.Fees),
+		DisableStopLoss: req.DisableStopLoss,
+		DisableRepeats:  req.DisableRepeats,
 	}, nil
 }
 
@@ -54,8 +55,8 @@ func feesFromDTO(req *feesRequest) *market.TakerMakerFees {
 	}
 
 	return &market.TakerMakerFees{
-		TakerFeeRate: int64(req.TakerFee * float64(units.PPM)),
-		MakerFeeRate: int64(req.MakerFee * float64(units.PPM)),
+		TakerFeeRate: core.PercentToPPM(req.TakerFeePct),
+		MakerFeeRate: core.PercentToPPM(req.MakerFeePct),
 	}
 }
 
@@ -67,11 +68,13 @@ func runToResponse(run analysis.Run) runResponse {
 	}
 
 	return runResponse{
-		BaseRunResponse:  core.BaseRunToResponse(run.BaseRun),
-		SumProfitPercent: run.SumProfitPercent,
-		AvgProfitPercent: run.AvgProfitPercent,
-		IsShared:         run.IsShared,
-		SharedAt:         sharedAt,
+		BaseRunResponse: core.BaseRunToResponse(run.BaseRun),
+		SumProfitPct:    core.PPMToPercent(run.SumProfitPPM),
+		AvgProfitPct:    core.PPMToPercent(run.AvgProfitPPM),
+		DisableStopLoss: run.DisableStopLoss,
+		DisableRepeats:  run.DisableRepeats,
+		IsShared:        run.IsShared,
+		SharedAt:        sharedAt,
 	}
 }
 
@@ -91,6 +94,16 @@ func runsPagedRequestFromDTO(req runsPagedRequest) (analysis.RunsPagedRequest, e
 		}
 	}
 
+	var minAvgProfitPPM, maxAvgProfitPPM *int64
+	if req.MinAvgProfitPct != nil {
+		v := core.PercentToPPM(*req.MinAvgProfitPct)
+		minAvgProfitPPM = &v
+	}
+	if req.MaxAvgProfitPct != nil {
+		v := core.PercentToPPM(*req.MaxAvgProfitPct)
+		maxAvgProfitPPM = &v
+	}
+
 	return analysis.RunsPagedRequest{
 		Limit:       req.Limit,
 		BeforeID:    beforeID,
@@ -105,8 +118,8 @@ func runsPagedRequestFromDTO(req runsPagedRequest) (analysis.RunsPagedRequest, e
 			Statuses:        req.Statuses,
 			MinSignals:      req.MinSignals,
 			MaxSignals:      req.MaxSignals,
-			MinAvgProfitPct: req.MinAvgProfitPct,
-			MaxAvgProfitPct: req.MaxAvgProfitPct,
+			MinAvgProfitPPM: minAvgProfitPPM,
+			MaxAvgProfitPPM: maxAvgProfitPPM,
 			FirstCandleFrom: req.FirstCandleFrom,
 			LastCandleTo:    req.LastCandleTo,
 			CreatedFrom:     req.CreatedFrom,

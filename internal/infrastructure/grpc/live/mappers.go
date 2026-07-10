@@ -8,7 +8,6 @@ import (
 	livepb "github.com/pulsoats/contracts/gen/go/live/v1"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/lib/units"
 	"github.com/pulsoats/core/market"
 	"github.com/pulsoats/main/internal/domain/live"
 	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
@@ -40,10 +39,10 @@ func runFromProto(pb *livepb.Run) (live.Run, error) {
 		finishedBy = &id
 	}
 	return live.Run{
-		Base:             baseRun,
-		SumProfitPercent: float64(pb.SumProfitPpm) / float64(units.PPM) * 100,
-		FinishedAt:       finishedAt,
-		FinishedBy:       finishedBy,
+		Base:         baseRun,
+		SumProfitPPM: pb.SumProfitPpm,
+		FinishedAt:   finishedAt,
+		FinishedBy:   finishedBy,
 	}, nil
 }
 

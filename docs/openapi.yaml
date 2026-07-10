@@ -443,6 +443,8 @@ paths:
         - {in: query, name: max_signals, schema: {type: integer, format: int64}}
         - {in: query, name: min_avg_profit_pct, schema: {type: number, format: float}}
         - {in: query, name: max_avg_profit_pct, schema: {type: number, format: float}}
+        - {in: query, name: disable_stop_loss, schema: {type: boolean}}
+        - {in: query, name: disable_repeats, schema: {type: boolean}}
         - {in: query, name: first_candle_from, schema: {type: string, format: date-time}}
         - {in: query, name: last_candle_to, schema: {type: string, format: date-time}}
         - {in: query, name: created_from, schema: {type: string, format: date-time}}
@@ -1313,15 +1315,19 @@ components:
         fees:
           type: object
           properties:
-            takerFee: {type: number, format: float, example: 0.0005}
-            makerFee: {type: number, format: float, example: 0.0001}
+            takerFeePct: {type: number, format: float, example: 0.05, description: "Taker fee in percent (e.g. 0.05 = 0.05%)"}
+            makerFeePct: {type: number, format: float, example: 0.01, description: "Maker fee in percent (e.g. 0.01 = 0.01%)"}
+        disableStopLoss: {type: boolean, description: Отключить стоп-лосс}
+        disableRepeats: {type: boolean, description: Отключить повторные входы}
     AnalysisRun:
       allOf:
         - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
-            sumProfitPercent: {type: number, format: float}
-            avgProfitPercent: {type: number, format: float}
+            sumProfitPct: {type: number, format: float, description: "Суммарная доходность в процентах (округление до 3 знаков)"}
+            avgProfitPct: {type: number, format: float, description: "Средняя доходность на сигнал в процентах"}
+            disableStopLoss: {type: boolean}
+            disableRepeats: {type: boolean}
             isShared: {type: boolean}
             sharedAt: {type: string, format: date-time, nullable: true}
     AnalysisRunsResponse:
@@ -1346,7 +1352,7 @@ components:
         - {$ref: '#/components/schemas/BaseRun'}
         - type: object
           properties:
-            sumProfitPercent: {type: number, format: float}
+            sumProfitPct: {type: number, format: float, description: "Суммарная доходность в процентах (округление до 3 знаков)"}
             finishedAt: {type: string, format: date-time, nullable: true}
             finishedBy: {type: string, nullable: true}
     LiveRunsResponse:
@@ -1371,7 +1377,7 @@ components:
         buyValue: {type: integer, format: int64}
         takeProfitValue: {type: integer, format: int64}
         stopLossValue: {type: integer, format: int64}
-        expectedReturnPpm: {type: integer, format: int64, description: "Доходность в PPM (1 000 000 = 100%)"}
+        expectedReturnPct: {type: number, format: float, description: "Ожидаемая доходность в процентах (округление до 3 знаков)"}
         fingerprint: {type: string, format: uuid}
         createdAt: {type: integer, format: int64, description: Unix ms}
     LiveSignalsResponse:
