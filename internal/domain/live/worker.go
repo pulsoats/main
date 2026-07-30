@@ -28,6 +28,9 @@ type Worker struct {
 	CreatedAt         time.Time
 }
 
+type WorkersFilter struct {
+}
+
 type WorkerRepository interface {
 	CreateWorker(ctx context.Context, worker *Worker) error
 	WorkerByID(ctx context.Context, workerID uuid.UUID) (Worker, error)
@@ -41,6 +44,20 @@ type WorkerRepository interface {
 }
 
 type WorkerStats struct {
-	RunsTotal    int32
-	SignalsTotal int64
+	ActiveRuns   int32
+	SignalsTotal int32
+}
+
+type ResourceUsage struct {
+	ContainerID string
+	CPUPercent  float64
+	MemoryBytes uint64
+}
+
+type WorkerMetrics struct {
+	WorkerID      uuid.UUID
+	Status        WorkerStatus
+	WorkerStats   *WorkerStats
+	ResourceUsage *ResourceUsage
+	At            time.Time
 }

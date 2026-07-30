@@ -24,7 +24,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 
 	addr := "tcp://" + net.JoinHostPort(req.Host, strconv.Itoa(req.DockerPort))
 
-	dockerClient, err := a.dockerFactory.NewClient(addr)
+	dockerClient, err := a.cfg.DockerClientFactory.NewClient(addr)
 	if err != nil {
 		return live.Node{}, fmt.Errorf("%s: docker: %w", op, err)
 	}
@@ -50,7 +50,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 		WorkersCount: 0,
 	}
 
-	err = a.nodeRepo.CreateNode(ctx, &node)
+	err = a.cfg.NodeRepo.CreateNode(ctx, &node)
 	if err != nil {
 		return live.Node{}, err
 	}
@@ -61,12 +61,11 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 
 		var deployErrStr *string
 		if deployErr != nil {
-			s := deployErr.Error()
-			deployErrStr = &s
+			deployErrStr = new(deployErr.Error())
 		}
 
-		if err := a.nodeRepo.UpdateNodeStatusByID(failCtx, nodeID, live.NodeStatusFailed, deployErrStr); err != nil {
-			a.logger.Error("failed to update node status",
+		if err := a.cfg.NodeRepo.UpdateNodeStatusByID(failCtx, nodeID, live.NodeStatusFailed, deployErrStr); err != nil {
+			a.cfg.Logger.Error("failed to update node status",
 				"op", op,
 				"repo_error", err.Error(),
 				"deploy_error", deployErr,
@@ -87,7 +86,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 				fail(node.ID, fmt.Errorf("dbUser and dbPassword are required when dsn is not provided"))
 				return
 			}
-			containerName := fmt.Sprintf(dbContainerName, a.appName)
+			containerName := fmt.Sprintf(dbContainerName, a.cfg.AppName)
 			var deployErr error
 			dsn, deployErr = dockerClient.DeployDB(deployCtx, containerName, req.DBUser, req.DBPassword)
 			if deployErr != nil {
@@ -96,7 +95,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 			}
 		}
 
-		if err = a.nodeRepo.UpdateNodeDSNByID(deployCtx, node.ID, dsn); err != nil {
+		if err = a.cfg.NodeRepo.UpdateNodeDSNByID(deployCtx, node.ID, dsn); err != nil {
 			fail(node.ID, err)
 			return
 		}
@@ -105,7 +104,7 @@ func (a *Application) CreateNode(ctx context.Context, req live.AddNodeRequest) (
 		a.nodeClients[node.ID] = dockerClient
 		a.clientsMu.Unlock()
 
-		if err = a.nodeRepo.UpdateNodeStatusByID(deployCtx, node.ID, live.NodeStatusActive, nil); err != nil {
+		if err = a.cfg.NodeRepo.UpdateNodeStatusByID(deployCtx, node.ID, live.NodeStatusActive, nil); err != nil {
 			fail(node.ID, err)
 		}
 	}()
@@ -117,7 +116,7 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 	const op = "disable node"
 
 	// Check DB first so we can disable nodes whose client was not restored after restart.
-	node, err := a.nodeRepo.NodeByID(ctx, nodeID)
+	node, err := a.cfg.NodeRepo.NodeByID(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -129,12 +128,12 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 	nodeClient, hasClient := a.nodeClients[nodeID]
 	a.clientsMu.RUnlock()
 
-	workers, err := a.workerRepo.WorkersByNodeID(ctx, nodeID, live.WorkerStatusRunning)
+	workers, err := a.cfg.WorkerRepo.WorkersByNodeID(ctx, nodeID, live.WorkerStatusRunning)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
-	if err = a.nodeRepo.UpdateNodeStatusByID(ctx, nodeID, live.NodeStatusDisabling, nil); err != nil {
+	if err = a.cfg.NodeRepo.UpdateNodeStatusByID(ctx, nodeID, live.NodeStatusDisabling, nil); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -149,15 +148,14 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 
 			if ok {
 				if err := client.StopAllRuns(disableCtx, callerID); err != nil {
-					a.logger.Error("failed to stop all runs", "op", op, "error", err, "worker_id", w.ID)
+					a.cfg.Logger.Error("failed to stop all runs", "op", op, "error", err, "worker_id", w.ID)
 				}
 			}
 
 			if hasClient {
 				if err := nodeClient.StopWorker(disableCtx, w.ContainerID); err != nil {
-					s := err.Error()
-					if saveErr := a.workerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusFailed, &s); saveErr != nil {
-						a.logger.Error("failed to update worker status",
+					if saveErr := a.cfg.WorkerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusFailed, new(err.Error())); saveErr != nil {
+						a.cfg.Logger.Error("failed to update worker status",
 							"op", op,
 							"repo_error", saveErr.Error(),
 							"stop_error", err,
@@ -168,7 +166,7 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 				}
 			} else {
 				// Docker client not available — mark worker as stopped in DB best-effort.
-				a.logger.Warn("docker client unavailable, marking worker stopped without container stop",
+				a.cfg.Logger.Warn("docker client unavailable, marking worker stopped without container stop",
 					"op", op, "worker_id", w.ID)
 			}
 
@@ -176,8 +174,8 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 			delete(a.workerClients, w.ExchangeAccountID)
 			a.clientsMu.Unlock()
 
-			if err := a.workerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusStopped, nil); err != nil {
-				a.logger.Error("failed to update worker status",
+			if err := a.cfg.WorkerRepo.UpdateWorkerStatusByID(disableCtx, w.ID, live.WorkerStatusStopped, nil); err != nil {
+				a.cfg.Logger.Error("failed to update worker status",
 					"op", op,
 					"repo_error", err.Error(),
 					"worker_id", w.ID,
@@ -189,8 +187,8 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 		delete(a.nodeClients, nodeID)
 		a.clientsMu.Unlock()
 
-		if err := a.nodeRepo.UpdateNodeStatusByID(disableCtx, nodeID, live.NodeStatusDisabled, nil); err != nil {
-			a.logger.Error("failed to update node status",
+		if err := a.cfg.NodeRepo.UpdateNodeStatusByID(disableCtx, nodeID, live.NodeStatusDisabled, nil); err != nil {
+			a.cfg.Logger.Error("failed to update node status",
 				"op", op,
 				"repo_error", err.Error(),
 				"node_id", nodeID,
@@ -204,18 +202,18 @@ func (a *Application) DisableNode(ctx context.Context, nodeID uuid.UUID, callerI
 func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 	const op = "enable node"
 
-	node, err := a.nodeRepo.NodeByID(ctx, nodeID)
+	node, err := a.cfg.NodeRepo.NodeByID(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	workers, err := a.workerRepo.WorkersByNodeID(ctx, nodeID, live.WorkerStatusStopped, live.WorkerStatusRunning)
+	workers, err := a.cfg.WorkerRepo.WorkersByNodeID(ctx, nodeID, live.WorkerStatusStopped, live.WorkerStatusRunning)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
-	dockerClient, err := a.dockerFactory.NewClient(addr)
+	dockerClient, err := a.cfg.DockerClientFactory.NewClient(addr)
 	if err != nil {
 		return fmt.Errorf("%s: docker: %w", op, err)
 	}
@@ -235,12 +233,11 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 
 			var workerErrStr *string
 			if workerErr != nil {
-				s := workerErr.Error()
-				workerErrStr = &s
+				workerErrStr = new(workerErr.Error())
 			}
 
-			if err := a.workerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, workerErrStr); err != nil {
-				a.logger.Error("failed to update worker status",
+			if err := a.cfg.WorkerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, workerErrStr); err != nil {
+				a.cfg.Logger.Error("failed to update worker status",
 					"op", op,
 					"repo_error", err.Error(),
 					"deploy_error", workerErr,
@@ -261,7 +258,7 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 
 			grpcAddr := net.JoinHostPort(w.Host, strconv.Itoa(port))
 
-			grpcClient, err := a.workerClientFactory.NewClient(grpcAddr)
+			grpcClient, err := a.cfg.WorkerClientFactory.NewClient(grpcAddr)
 			if err != nil {
 				fail(w.ID, err)
 				cancel()
@@ -278,8 +275,8 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 			a.workerClients[w.ExchangeAccountID] = grpcClient
 			a.clientsMu.Unlock()
 
-			if err = a.workerRepo.UpdateWorkerDeploymentByID(workerCtx, w.ID, w.ContainerID, port); err != nil {
-				a.logger.Error("failed to update worker deployment",
+			if err = a.cfg.WorkerRepo.UpdateWorkerDeploymentByID(workerCtx, w.ID, w.ContainerID, port); err != nil {
+				a.cfg.Logger.Error("failed to update worker deployment",
 					"op", op,
 					"repo_error", err.Error(),
 					"worker_id", w.ID,
@@ -288,8 +285,8 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 				continue
 			}
 
-			if err = a.workerRepo.UpdateWorkerStatusByID(workerCtx, w.ID, live.WorkerStatusRunning, nil); err != nil {
-				a.logger.Error("failed to update worker status",
+			if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(workerCtx, w.ID, live.WorkerStatusRunning, nil); err != nil {
+				a.cfg.Logger.Error("failed to update worker status",
 					"op", op,
 					"repo_error", err.Error(),
 					"worker_id", w.ID,
@@ -299,8 +296,8 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 		}
 	}()
 
-	if err = a.nodeRepo.UpdateNodeStatusByID(ctx, nodeID, live.NodeStatusActive, nil); err != nil {
-		a.logger.Error("failed to update node status",
+	if err = a.cfg.NodeRepo.UpdateNodeStatusByID(ctx, nodeID, live.NodeStatusActive, nil); err != nil {
+		a.cfg.Logger.Error("failed to update node status",
 			"op", op,
 			"repo_error", err.Error(),
 			"node_id", node.ID,
@@ -310,7 +307,7 @@ func (a *Application) EnableNode(ctx context.Context, nodeID uuid.UUID) error {
 }
 
 func (a *Application) NodeByID(ctx context.Context, nodeID uuid.UUID) (live.Node, error) {
-	return a.nodeRepo.NodeByID(ctx, nodeID)
+	return a.cfg.NodeRepo.NodeByID(ctx, nodeID)
 }
 
 type NodesFilter struct {
@@ -319,15 +316,15 @@ type NodesFilter struct {
 
 func (a *Application) Nodes(ctx context.Context, f NodesFilter) ([]live.Node, error) {
 	if f.Exchange != nil {
-		return a.nodeRepo.NodesByExchange(ctx, *f.Exchange)
+		return a.cfg.NodeRepo.NodesByExchange(ctx, *f.Exchange)
 	}
-	return a.nodeRepo.Nodes(ctx)
+	return a.cfg.NodeRepo.Nodes(ctx)
 }
 
 func (a *Application) DeleteNode(ctx context.Context, nodeID uuid.UUID) error {
 	const op = "delete node"
 
-	node, err := a.nodeRepo.NodeByID(ctx, nodeID)
+	node, err := a.cfg.NodeRepo.NodeByID(ctx, nodeID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -336,7 +333,7 @@ func (a *Application) DeleteNode(ctx context.Context, nodeID uuid.UUID) error {
 		return fmt.Errorf("%s: only disabled node can be deleted: %w", op, errorsx.ErrConflict)
 	}
 
-	if err = a.nodeRepo.DeleteNodeByID(ctx, nodeID); err != nil {
+	if err = a.cfg.NodeRepo.DeleteNodeByID(ctx, nodeID); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 

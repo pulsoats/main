@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -300,54 +299,28 @@ func (c *Client) RestartWorker(ctx context.Context, containerID string) error {
 	return nil
 }
 
-// StreamWorkerMetrics читает стрим ContainerStats, преобразуя в live.Metrics и отправляя их в канал.
-func (c *Client) StreamWorkerMetrics(ctx context.Context, containerID string) (chan live.Metrics, error) {
+func (c *Client) ContainerStats(ctx context.Context, containerID string) (live.ResourceUsage, error) {
 	const op = "worker metrics"
 
 	statsResp, err := c.apiClient.ContainerStats(ctx, containerID, client.ContainerStatsOptions{
-		Stream:                true,
+		Stream:                false,
 		IncludePreviousSample: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: container stats: %w", op, errors.Join(errorsx.ErrInternal, err))
+		return live.ResourceUsage{}, fmt.Errorf("%s: container stats: %w", op, errors.Join(errorsx.ErrInternal, err))
+	}
+	defer statsResp.Body.Close()
+
+	var stats container.StatsResponse
+	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
+		return live.ResourceUsage{}, fmt.Errorf("%s: decode: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 
-	metricsChan := make(chan live.Metrics, 10)
-
-	go func() {
-		defer statsResp.Body.Close()
-		defer close(metricsChan)
-
-		decoder := json.NewDecoder(statsResp.Body)
-
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-
-			var stats container.StatsResponse
-			if err := decoder.Decode(&stats); err != nil {
-				if errors.Is(err, io.EOF) {
-					return
-				}
-				return
-			}
-
-			metrics := c.calculateMetrics(stats)
-
-			select {
-			case <-ctx.Done():
-				return
-			case metricsChan <- metrics:
-			}
-		}
-	}()
-
-	return metricsChan, nil
+	return c.calculateMetrics(stats), nil
 }
 
 // calculateMetrics рассчитывает метрики контейнера
-func (c *Client) calculateMetrics(stats container.StatsResponse) live.Metrics {
+func (c *Client) calculateMetrics(stats container.StatsResponse) live.ResourceUsage {
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage) - float64(stats.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemUsage) - float64(stats.PreCPUStats.SystemUsage)
 
@@ -366,7 +339,7 @@ func (c *Client) calculateMetrics(stats container.StatsResponse) live.Metrics {
 		memUsage -= inactiveFile
 	}
 
-	return live.Metrics{
+	return live.ResourceUsage{
 		ContainerID: stats.ID,
 		CPUPercent:  cpuPercent,
 		MemoryBytes: memUsage,

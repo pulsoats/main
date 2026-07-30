@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/market"
 	corerun "github.com/pulsoats/core/run"
@@ -34,18 +33,15 @@ func newRunRequestFromRequest(req newRunRequest) (analysis.NewRunRequest, error)
 			Category: req.Market.Category,
 			Symbol:   req.Market.Symbol,
 		},
-		Interval: req.Interval,
-		From:     fromTime,
-		To:       toTime,
-		Detector: detect.DetectorConfig{
-			Code:      req.Detector.Code,
-			Version:   req.Detector.Version,
-			OptsLabel: req.Detector.OptsLabel,
-			Opts:      req.Detector.Opts,
-		},
-		Fees:            feesFromDTO(req.Fees),
-		DisableStopLoss: req.DisableStopLoss,
-		DisableRepeats:  req.DisableRepeats,
+		Interval:         req.Interval,
+		From:             fromTime,
+		To:               toTime,
+		DetectorConfigs:  core.DetectorConfigFromRequest(req.DetectorConfig),
+		FiltersConfigs:   core.FiltersConfigsFromRequest(req.FiltersConfigs),
+		Fees:             feesFromDTO(req.Fees),
+		DisableStopLoss:  req.DisableStopLoss,
+		DisableRepeats:   req.DisableRepeats,
+		CollectRejectLog: req.CollectRejectLog,
 	}, nil
 }
 
@@ -63,12 +59,15 @@ func feesFromDTO(req *feesRequest) *market.TakerMakerFees {
 func runToResponse(run analysis.Run) runResponse {
 	var sharedAt *string
 	if run.SharedAt != nil {
-		sharedAtStr := run.SharedAt.Format(time.RFC3339)
-		sharedAt = &sharedAtStr
+		sharedAt = new(run.SharedAt.Format(time.RFC3339))
 	}
 
 	return runResponse{
 		BaseRunResponse: core.BaseRunToResponse(run.BaseRun),
+		Fees: feesResponse{
+			TakerFeePct: core.PPMToPercent(run.Fees.TakerFeeRate),
+			MakerFeePct: core.PPMToPercent(run.Fees.MakerFeeRate),
+		},
 		SumProfitPct:    core.PPMToPercent(run.SumProfitPPM),
 		AvgProfitPct:    core.PPMToPercent(run.AvgProfitPPM),
 		DisableStopLoss: run.DisableStopLoss,
@@ -78,7 +77,7 @@ func runToResponse(run analysis.Run) runResponse {
 	}
 }
 
-func runsPagedRequestFromDTO(req runsPagedRequest) (analysis.RunsPagedRequest, error) {
+func runsPagedRequestFromRequest(req runsPagedRequest) (analysis.RunsPagedRequest, error) {
 	var beforeID *uuid.UUID
 	if req.BeforeID != "" {
 		id, err := uuid.Parse(req.BeforeID)
@@ -96,12 +95,10 @@ func runsPagedRequestFromDTO(req runsPagedRequest) (analysis.RunsPagedRequest, e
 
 	var minAvgProfitPPM, maxAvgProfitPPM *int64
 	if req.MinAvgProfitPct != nil {
-		v := core.PercentToPPM(*req.MinAvgProfitPct)
-		minAvgProfitPPM = &v
+		minAvgProfitPPM = new(core.PercentToPPM(*req.MinAvgProfitPct))
 	}
 	if req.MaxAvgProfitPct != nil {
-		v := core.PercentToPPM(*req.MaxAvgProfitPct)
-		maxAvgProfitPPM = &v
+		maxAvgProfitPPM = new(core.PercentToPPM(*req.MaxAvgProfitPct))
 	}
 
 	return analysis.RunsPagedRequest{

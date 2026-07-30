@@ -70,10 +70,6 @@ type nodesResponse struct {
 	Nodes []nodeResponse `json:"nodes"`
 }
 
-type createWorkerRequest struct {
-	ExchangeAccountID uuid.UUID
-}
-
 type workerResponse struct {
 	ID                uuid.UUID `json:"id"`
 	NodeID            uuid.UUID `json:"nodeId"`
@@ -93,15 +89,15 @@ type workersResponse struct {
 
 type runResponse struct {
 	core.BaseRunResponse
-	SumProfitPct float64 `json:"sumProfitPct"`
-	FinishedAt   *string `json:"finishedAt,omitempty"`
-	FinishedBy   *string `json:"finishedBy,omitempty"`
+	FinishedAt *string `json:"finishedAt,omitempty"`
+	FinishedBy *string `json:"finishedBy,omitempty"`
 }
 
 type newRunRequest struct {
-	Market   core.MarketSpecRequest     `json:"market" binding:"required"`
-	Interval string                     `json:"interval" binding:"required"`
-	Detector core.DetectorConfigRequest `json:"detector" binding:"required"`
+	Market         core.MarketSpecRequest     `json:"market" binding:"required"`
+	Interval       string                     `json:"interval" binding:"required"`
+	DetectorConfig core.DetectorConfigRequest `json:"detectorConfig" binding:"required"`
+	FiltersConfigs []core.FilterConfigRequest `json:"filtersConfigs"`
 }
 
 type runsPagedRequest struct {
@@ -132,16 +128,15 @@ type signalResponse struct {
 	ID                uuid.UUID               `json:"id"`
 	RunID             uuid.UUID               `json:"runId"`
 	Market            core.MarketSpecResponse `json:"market"`
+	Interval          string                  `json:"interval"`
 	DetectorCode      string                  `json:"detectorCode"`
 	DetectorVersion   string                  `json:"detectorVersion"`
-	DetectorOptsLabel string                  `json:"detectorOptsLabel"`
-	CandleTime        int64                   `json:"candleTime"`
-	CandleValue       int64                   `json:"candleValue"`
+	CandleTime        string                  `json:"candleTime"` // RFC3339
 	BuyValue          int64                   `json:"buyValue"`
 	TakeProfitValue   int64                   `json:"takeProfitValue"`
 	StopLossValue     int64                   `json:"stopLossValue"`
 	ExpectedReturnPct float64                 `json:"expectedReturnPct"`
-	CreatedAt         int64                   `json:"createdAt"`
+	CreatedAt         string                  `json:"createdAt"` // RFC3339
 }
 
 type signalsPagedRequest struct {
@@ -165,7 +160,26 @@ type signalsPagedResponse struct {
 	HasMore      bool             `json:"hasMore"`
 }
 
+type workerMetricsResponse struct {
+	WorkerID      uuid.UUID              `json:"workerId"`
+	Status        string                 `json:"status"`
+	WorkerStats   *workerStatsResponse   `json:"workerStats"`
+	ResourceUsage *resourceUsageResponse `json:"resourceUsage"`
+	At            string                 `json:"atTime"` // RFC3339
+}
+
 type workerStatsResponse struct {
-	RunsTotal    int32 `json:"runsTotal"`
-	SignalsTotal int64 `json:"signalsTotal"`
+	ActiveRuns   int32 `json:"activeRuns"`
+	SignalsTotal int32 `json:"signalsTotal"`
+}
+
+type resourceUsageResponse struct {
+	ContainerID string  `json:"containerId"`
+	CPUPercent  float64 `json:"cpuPercent"`
+	MemoryBytes uint64  `json:"memoryBytes"`
+}
+
+type runStatusEventResponse struct {
+	RunID  uuid.UUID              `json:"runId"`
+	Status core.RunStatusResponse `json:"status"`
 }

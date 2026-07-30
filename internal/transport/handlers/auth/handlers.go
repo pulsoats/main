@@ -163,13 +163,11 @@ func (h *Handler) Login(c *gin.Context) {
 	if ip == "" {
 		ip = c.ClientIP()
 	}
-	agent := c.Request.UserAgent()
-
 	input := auth.LoginInput{
 		Email:     req.Email,
 		Password:  req.Password,
 		IPAddress: &ip,
-		UserAgent: &agent,
+		UserAgent: new(c.Request.UserAgent()),
 	}
 
 	resp, err := h.app.Login(c.Request.Context(), input)

@@ -43,7 +43,7 @@ func (r *Repository) UpsertSymbols(ctx context.Context, exchange, category strin
 
 func (r *Repository) Symbols(ctx context.Context, exchange, category string) ([]string, error) {
 	const query = `
-	SELECT symbol
+	SELECT DISTINCT symbol
 	FROM markets
 	WHERE exchange = $1
 	  AND category = $2
@@ -75,7 +75,7 @@ func (r *Repository) Suggest(ctx context.Context, exchange, query string, limit 
 	}
 
 	const q = `
-	SELECT category, symbol
+	SELECT DISTINCT category, symbol
 	FROM markets
 	WHERE exchange = $1
 	  AND (

@@ -13,7 +13,8 @@ import (
 	analysispb "github.com/pulsoats/contracts/gen/go/analysis/v1"
 	catalogpb "github.com/pulsoats/contracts/gen/go/catalog/v1"
 	corepb "github.com/pulsoats/contracts/gen/go/core/v1"
-	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/main/internal/domain/analysis"
@@ -140,8 +141,7 @@ func (c *Client) RunsPaged(ctx context.Context, userID uuid.UUID, req analysis.R
 
 	var beforeID *string
 	if req.BeforeID != nil {
-		s := req.BeforeID.String()
-		beforeID = &s
+		beforeID = new(req.BeforeID.String())
 	}
 
 	var scope analysispb.RunScope
@@ -175,9 +175,9 @@ func (c *Client) RunsPaged(ctx context.Context, userID uuid.UUID, req analysis.R
 	return respFromProto, nil
 }
 
-func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+func (c *Client) AvailableDetectors(ctx context.Context) ([]detector.Meta, error) {
 	const op = "list available detectors"
-	resp, err := c.catalog.ListAvailableDetectors(ctx, &emptypb.Empty{})
+	resp, err := c.catalog.ListAvailableDetectors(ctx, new(emptypb.Empty))
 	if err != nil {
 		return nil, coregrpc.MapError(err)
 	}
@@ -185,20 +185,29 @@ func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta,
 		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	res := make([]detect.DetectorMeta, 0, len(resp.Detectors))
-	for _, metaPb := range resp.Detectors {
-		detMeta, err := coregrpc.DetectorMetaFromProto(metaPb)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
-		res = append(res, detMeta)
+	res, err := coregrpc.AvailableDetectorsFromProto(resp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return res, nil
 }
 
+func (c *Client) AvailableFilters(ctx context.Context) ([]filter.Meta, error) {
+	const op = "available filters"
+	resp, err := c.catalog.ListAvailableFilters(ctx, new(emptypb.Empty))
+	if err != nil {
+		return nil, coregrpc.MapError(err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("%s: nil response: %w", op, errorsx.ErrInternal)
+	}
+
+	return coregrpc.AvailableFiltersFromProto(resp)
+}
+
 func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error) {
 	const op = "list available exchanges"
-	resp, err := c.catalog.ListAvailableExchanges(ctx, &emptypb.Empty{})
+	resp, err := c.catalog.ListAvailableExchanges(ctx, new(emptypb.Empty))
 	if err != nil {
 		return nil, coregrpc.MapError(err)
 	}
@@ -206,13 +215,9 @@ func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error
 		return nil, fmt.Errorf("%s: resp is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	res := make([]exchange.Meta, 0, len(resp.ExchangeMetas))
-	for _, metaPb := range resp.ExchangeMetas {
-		exMeta, err := coregrpc.ExchangeMetaFromProto(metaPb)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, errorsx.ErrInternal)
-		}
-		res = append(res, exMeta)
+	res, err := coregrpc.AvailableExchangesFromProto(resp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return res, nil
 }

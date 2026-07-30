@@ -26,7 +26,7 @@ internal/
 │   ├── analysis/                  # Бэктест-прогоны
 │   ├── auth/                      # Аутентификация и сессии
 │   ├── live/                      # Биржевые аккаунты, ноды, воркеры
-│   └── marketSpec/                    # Справочник символов
+│   └── market/                    # Справочник символов
 ├── domain/                        # Доменные модели и интерфейсы репозиториев
 │   ├── live/                      # ExchangeAccount, Node, Worker, Event, Metrics
 │   └── ...
@@ -70,12 +70,15 @@ internal/
               POST /worker/start ← stopped
                                   ↓
               POST /worker/stop → stopped
+                                  ↓
+             POST /worker/update → deploying → running
 ```
 
-**SSE-потоки:**
-- `GET /accounts/:id/events` — события воркера (прогоны, сигналы)
-- `GET /accounts/:id/worker/metrics` — метрики контейнера (CPU, RAM)
-- `GET /accounts/:id/worker/stats` — статистика прогонов
+**SSE-поток:**
+- `GET /accounts/:id/events` — события воркера в реальном времени (`run` — статус прогона, `signal` — новый сигнал)
+
+**Снимки состояния:**
+- `GET /accounts/:id/worker/metrics` — текущий статус воркера, статистика прогонов и потребление ресурсов контейнера (CPU, память)
 
 ### Analysis
 Бэктест торговых стратегий на исторических данных. Прогоны запускаются через gRPC-сервис анализа, результаты стримятся по SSE.
@@ -239,8 +242,6 @@ migrate -path ./migrations -database "$POSTGRES_DSN" down 1
 
 Полная спецификация — [`docs/openapi.yaml`](docs/openapi.yaml).
 
-**Базовый URL:** `https://api.pulsoats.com`
-
 **Аутентификация:** Bearer JWT (`Authorization: Bearer <access_token>`)
 
 ### Основные группы маршрутов
@@ -254,16 +255,20 @@ migrate -path ./migrations -database "$POSTGRES_DSN" down 1
 | `GET /accounts/:id/worker` | авторизован | Воркер аккаунта |
 | `POST /accounts/:id/worker` | авторизован | Создать и задеплоить воркер (202) |
 | `POST /accounts/:id/worker/start` | авторизован | Запустить остановленный воркер (202) |
+| `POST /accounts/:id/worker/update` | авторизован | Обновить образ воркера (202) |
 | `POST /accounts/:id/worker/stop` | авторизован | Остановить воркер |
+| `GET /accounts/:id/worker/metrics` | авторизован | Снимок метрик воркера |
 | `GET /accounts/:id/events` | авторизован | SSE-поток событий |
-| `GET /accounts/:id/worker/metrics` | авторизован | SSE-метрики контейнера |
 | `GET /accounts/:id/runs` | авторизован | Прогоны аккаунта |
 | `POST /accounts/:id/runs` | авторизован | Запустить прогон |
+| `DELETE /accounts/:id/runs/:run_id` | авторизован | Остановить прогон |
+| `DELETE /accounts/:id/runs` | авторизован | Остановить все прогоны |
 | `GET /workers` | авторизован | Все воркеры (фильтр: `?exchange=`, `?node_id=`) |
 | `POST /admin/nodes` | admin | Добавить ноду (202) |
 | `GET /admin/nodes` | admin | Список нод (фильтр: `?exchange=`) |
 | `POST /admin/nodes/:id/disable` | admin | Отключить ноду (202) |
 | `POST /admin/nodes/:id/enable` | admin | Включить ноду |
+| `DELETE /admin/nodes/:id` | admin | Удалить ноду (требует статус `disabled`) |
 
 ---
 

@@ -72,10 +72,10 @@ const (
 )
 
 const (
-	envGHCRUser      = "GHCR_USER"
-	envGHCRToken     = "GHCR_TOKEN"
-	envLiveImageURL  = "LIVE_IMAGE_URL"
-	envDockerDBImage = "DOCKER_DB_IMAGE"
+	envGHCRUser         = "GHCR_USER"
+	envGHCRToken        = "GHCR_TOKEN"
+	envLiveImageURL     = "LIVE_IMAGE_URL"
+	envDockerDBImage    = "DOCKER_DB_IMAGE"
 	envDockerCACertFile = "DOCKER_CA_CERT_FILE"
 	envDockerCertFile   = "DOCKER_CERT_FILE"
 	envDockerKeyFile    = "DOCKER_KEY_FILE"
@@ -242,7 +242,7 @@ func main() {
 		zlogger.Fatal().Err(err).Msg("init cert generator")
 	}
 
-	liveApp, err := applive.NewApplication(applive.ApplicationConfig{
+	liveApp, err := applive.NewApplication(applive.Config{
 		AppName:             appName,
 		WorkerRepo:          workerRepo,
 		NodeRepo:            nodeRepo,

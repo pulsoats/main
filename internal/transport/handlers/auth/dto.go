@@ -35,8 +35,7 @@ type inviteTokenResponse struct {
 func mapToInviteTokenResponse(token auth.InviteToken) inviteTokenResponse {
 	var usedAtStr *string
 	if token.UsedAt != nil {
-		s := token.UsedAt.Format(time.RFC3339)
-		usedAtStr = &s
+		usedAtStr = new(token.UsedAt.Format(time.RFC3339))
 	}
 	return inviteTokenResponse{
 		ID:        token.ID,

@@ -359,8 +359,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 
 	defer func() {
 		if err != nil && attempt.Reason == nil {
-			reason := "login_failed"
-			attempt.Reason = &reason
+			attempt.Reason = new("login_failed")
 		}
 		_ = a.repo.CreateLoginAttempt(ctx, attempt)
 	}()
@@ -381,8 +380,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 		user, err := a.repo.UserByEmail(txCtx, input.Email)
 		if err != nil {
 			if errors.Is(err, errorsx.ErrNotFound) {
-				reason := "invalid_credentials"
-				attempt.Reason = &reason
+				attempt.Reason = new("invalid_credentials")
 				return errorsx.ErrUnauthorized
 			}
 			return fmt.Errorf("%s: %w", op, err)
@@ -393,18 +391,15 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 		attempt.UserID = &user.ID
 
 		if user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
-			reason := "account_locked"
-			attempt.Reason = &reason
+			attempt.Reason = new("account_locked")
 			return errorsx.ErrUnauthorized
 		}
 		if user.Status == "disabled" || user.Status == "locked" {
-			reason := "account_disabled"
-			attempt.Reason = &reason
+			attempt.Reason = new("account_disabled")
 			return errorsx.ErrUnauthorized
 		}
 		if user.Status == "pending" {
-			reason := "email_not_verified"
-			attempt.Reason = &reason
+			attempt.Reason = new("email_not_verified")
 			return errorsx.ErrUnauthorized
 		}
 
@@ -413,8 +408,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 			return fmt.Errorf("%s: compare password: %w", op, errors.Join(errorsx.ErrInternal, err))
 		}
 		if !matched {
-			reason := "invalid_credentials"
-			attempt.Reason = &reason
+			attempt.Reason = new("invalid_credentials")
 			return errorsx.ErrUnauthorized
 		}
 
@@ -449,8 +443,7 @@ func (a *Application) Login(ctx context.Context, input auth.LoginInput) (resp au
 		Role:      userRole,
 	})
 	if err != nil {
-		reason := "access_token_failed"
-		attempt.Reason = &reason
+		attempt.Reason = new("access_token_failed")
 		return auth.LoginResponse{}, fmt.Errorf("%s: generate access token: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
 

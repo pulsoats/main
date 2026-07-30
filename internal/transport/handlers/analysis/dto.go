@@ -8,14 +8,16 @@ import (
 )
 
 type newRunRequest struct {
-	Market          core.MarketSpecRequest     `json:"market" binding:"required"`
-	Interval        string                     `json:"interval" binding:"required"`
-	FromTime        string                     `json:"fromTime" binding:"required"`
-	ToTime          string                     `json:"toTime" binding:"required"`
-	Detector        core.DetectorConfigRequest `json:"detector" binding:"required"`
-	Fees            *feesRequest               `json:"fees,omitempty"`
-	DisableStopLoss bool                       `json:"disableStopLoss"`
-	DisableRepeats  bool                       `json:"disableRepeats"`
+	Market           core.MarketSpecRequest     `json:"market" binding:"required"`
+	Interval         string                     `json:"interval" binding:"required"`
+	FromTime         string                     `json:"fromTime" binding:"required"`
+	ToTime           string                     `json:"toTime" binding:"required"`
+	DetectorConfig   core.DetectorConfigRequest `json:"detectorConfig" binding:"required"`
+	FiltersConfigs   []core.FilterConfigRequest `json:"filtersConfigs"`
+	Fees             *feesRequest               `json:"fees,omitempty"`
+	DisableStopLoss  bool                       `json:"disableStopLoss"`
+	DisableRepeats   bool                       `json:"disableRepeats"`
+	CollectRejectLog bool                       `json:"collectRejectLog"`
 }
 
 type feesRequest struct {
@@ -23,15 +25,20 @@ type feesRequest struct {
 	MakerFeePct float64 `json:"makerFeePct" binding:"required"`
 }
 
+type feesResponse struct {
+	TakerFeePct float64 `json:"takerFeePct"`
+	MakerFeePct float64 `json:"makerFeePct"`
+}
+
 type runResponse struct {
 	core.BaseRunResponse
-	SumProfitPct    float64   `json:"sumProfitPct"`
-	AvgProfitPct    float64   `json:"avgProfitPct"`
-	DisableStopLoss bool      `json:"disableStopLoss"`
-	DisableRepeats  bool      `json:"disableRepeats"`
-	IsShared        bool      `json:"isShared"`
-	SharedAt        *string   `json:"sharedAt"`
-	ServiceID       uuid.UUID `json:"serviceId"`
+	Fees            feesResponse `json:"fees"`
+	SumProfitPct    float64      `json:"sumProfitPct"`
+	AvgProfitPct    float64      `json:"avgProfitPct"`
+	DisableStopLoss bool         `json:"disableStopLoss"`
+	DisableRepeats  bool         `json:"disableRepeats"`
+	IsShared        bool         `json:"isShared"`
+	SharedAt        *string      `json:"sharedAt"`
 }
 
 type runsPagedRequest struct {

@@ -8,14 +8,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/envvars"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
-	"github.com/pulsoats/core/market"
 	"github.com/pulsoats/main/internal/domain/live"
 )
 
@@ -31,7 +32,7 @@ func workerContainerName(accountName string) string {
 func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (live.Worker, error) {
 	const op = "create worker"
 
-	account, err := a.accountRepo.AccountByIDWithCredentials(ctx, accountID)
+	account, err := a.cfg.AccountRepo.AccountByIDWithCredentials(ctx, accountID)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -39,7 +40,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		return live.Worker{}, fmt.Errorf("%s: account credentials is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	node, err := a.nodeRepo.LeastLoadedNodeByExchange(ctx, account.Exchange)
+	node, err := a.cfg.NodeRepo.LeastLoadedNodeByExchange(ctx, account.Exchange)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: no available node: %w", op, err)
 	}
@@ -53,7 +54,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		return live.Worker{}, fmt.Errorf("%s: invalid host: %w", op, errorsx.ErrInternal)
 	}
 
-	cert, key, err := a.certgen.GenerateServerCert(ip)
+	cert, key, err := a.cfg.CertGenerator.GenerateServerCert(ip)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, errors.Join(errorsx.ErrInternal, err))
 	}
@@ -64,13 +65,13 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		envvars.LiveExchangeAPIKey + "=" + account.Credentials.APIKey,
 		envvars.LiveExchangeAPISecret + "=" + account.Credentials.APISecret,
 		envvars.LiveExchangePassphrase + "=" + account.Credentials.Passphrase,
-		envvars.LiveGRPCCACert + "=" + a.grpcCACert,
+		envvars.LiveGRPCCACert + "=" + a.cfg.GRPCCACert,
 		envvars.LiveGRPCTLSCert + "=" + string(cert),
 		envvars.LiveGRPCTLSKey + "=" + string(key),
 	}
 
 	addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
-	dockerClient, err := a.dockerFactory.NewClient(addr)
+	dockerClient, err := a.cfg.DockerClientFactory.NewClient(addr)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -90,7 +91,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 
 	workerName := workerContainerName(account.Name)
 
-	if err = a.workerRepo.CreateWorker(ctx, &worker); err != nil {
+	if err = a.cfg.WorkerRepo.CreateWorker(ctx, &worker); err != nil {
 		return live.Worker{}, err
 	}
 
@@ -105,7 +106,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		}
 
 		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
-		client, err := a.workerClientFactory.NewClient(grpcAddr)
+		client, err := a.cfg.WorkerClientFactory.NewClient(grpcAddr)
 		if err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
@@ -116,7 +117,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 			return
 		}
 
-		if err = a.workerRepo.UpdateWorkerDeploymentByID(deployCtx, worker.ID, containerID, port); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerDeploymentByID(deployCtx, worker.ID, containerID, port); err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
 		}
@@ -125,7 +126,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 		a.workerClients[account.ID] = client
 		a.clientsMu.Unlock()
 
-		if err = a.workerRepo.UpdateWorkerStatusByID(deployCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(deployCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
 			a.failWorker(worker.ID, op, err)
 		}
 	}()
@@ -136,7 +137,7 @@ func (a *Application) CreateWorker(ctx context.Context, accountID uuid.UUID) (li
 func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, callerID uuid.UUID) error {
 	const op = "stop worker"
 
-	worker, err := a.workerRepo.WorkerByAccountID(ctx, accountID)
+	worker, err := a.cfg.WorkerRepo.WorkerByAccountID(ctx, accountID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -147,7 +148,7 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 	a.clientsMu.RUnlock()
 
 	if !grpcOk || !dockerOk {
-		a.logger.Error("client state inconsistency",
+		a.cfg.Logger.Error("client state inconsistency",
 			"op", op,
 			"grpc_client", grpcOk,
 			"docker_client", dockerOk,
@@ -158,7 +159,7 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 	}
 
 	if err := grpcClient.StopAllRuns(ctx, callerID); err != nil {
-		a.logger.Warn(op, "error", err)
+		a.cfg.Logger.Warn(op, "error", err)
 	}
 
 	if err := dockerClient.StopWorker(ctx, worker.ContainerID); err != nil {
@@ -169,7 +170,7 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 	delete(a.workerClients, worker.ExchangeAccountID)
 	a.clientsMu.Unlock()
 
-	if err := a.workerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusStopped, nil); err != nil {
+	if err := a.cfg.WorkerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusStopped, nil); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -179,7 +180,7 @@ func (a *Application) StopWorker(ctx context.Context, accountID uuid.UUID, calle
 func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (live.Worker, error) {
 	const op = "start worker"
 
-	worker, err := a.workerRepo.WorkerByAccountID(ctx, accountID)
+	worker, err := a.cfg.WorkerRepo.WorkerByAccountID(ctx, accountID)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -195,7 +196,7 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 		return live.Worker{}, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
 	}
 
-	if err = a.workerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusDeploying, nil); err != nil {
+	if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusDeploying, nil); err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -212,7 +213,7 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 		}
 
 		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
-		client, err := a.workerClientFactory.NewClient(grpcAddr)
+		client, err := a.cfg.WorkerClientFactory.NewClient(grpcAddr)
 		if err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
@@ -223,7 +224,7 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 			return
 		}
 
-		if err = a.workerRepo.UpdateWorkerDeploymentByID(startCtx, worker.ID, worker.ContainerID, port); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerDeploymentByID(startCtx, worker.ID, worker.ContainerID, port); err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
 		}
@@ -232,7 +233,7 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 		a.workerClients[accountID] = client
 		a.clientsMu.Unlock()
 
-		if err = a.workerRepo.UpdateWorkerStatusByID(startCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(startCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
 			a.failWorker(worker.ID, op, err)
 		}
 	}()
@@ -243,7 +244,7 @@ func (a *Application) StartWorker(ctx context.Context, accountID uuid.UUID) (liv
 func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (live.Worker, error) {
 	const op = "update worker"
 
-	worker, err := a.workerRepo.WorkerByAccountID(ctx, accountID)
+	worker, err := a.cfg.WorkerRepo.WorkerByAccountID(ctx, accountID)
 	if err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -259,7 +260,7 @@ func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (li
 		return live.Worker{}, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
 	}
 
-	if err = a.workerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusDeploying, nil); err != nil {
+	if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(ctx, worker.ID, live.WorkerStatusDeploying, nil); err != nil {
 		return live.Worker{}, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -276,7 +277,7 @@ func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (li
 		}
 
 		grpcAddr := net.JoinHostPort(worker.Host, strconv.Itoa(port))
-		client, err := a.workerClientFactory.NewClient(grpcAddr)
+		client, err := a.cfg.WorkerClientFactory.NewClient(grpcAddr)
 		if err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
@@ -287,7 +288,7 @@ func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (li
 			return
 		}
 
-		if err = a.workerRepo.UpdateWorkerDeploymentByID(updateCtx, worker.ID, newContainerID, port); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerDeploymentByID(updateCtx, worker.ID, newContainerID, port); err != nil {
 			a.failWorker(worker.ID, op, err)
 			return
 		}
@@ -296,7 +297,7 @@ func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (li
 		a.workerClients[accountID] = client
 		a.clientsMu.Unlock()
 
-		if err = a.workerRepo.UpdateWorkerStatusByID(updateCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
+		if err = a.cfg.WorkerRepo.UpdateWorkerStatusByID(updateCtx, worker.ID, live.WorkerStatusRunning, nil); err != nil {
 			a.failWorker(worker.ID, op, err)
 		}
 	}()
@@ -305,11 +306,22 @@ func (a *Application) UpdateWorker(ctx context.Context, accountID uuid.UUID) (li
 }
 
 func (a *Application) WorkerByID(ctx context.Context, workerID uuid.UUID) (live.Worker, error) {
-	return a.workerRepo.WorkerByID(ctx, workerID)
+	return a.cfg.WorkerRepo.WorkerByID(ctx, workerID)
 }
 
 func (a *Application) WorkerByExchangeAccountID(ctx context.Context, accountID uuid.UUID) (live.Worker, error) {
-	return a.workerRepo.WorkerByAccountID(ctx, accountID)
+	return a.cfg.WorkerRepo.WorkerByAccountID(ctx, accountID)
+}
+
+func (a *Application) Workers(ctx context.Context, f WorkersFilter) ([]live.Worker, error) {
+	switch {
+	case f.NodeID != nil:
+		return a.cfg.WorkerRepo.WorkersByNodeID(ctx, *f.NodeID)
+	case f.Exchange != nil:
+		return a.cfg.WorkerRepo.WorkersByExchange(ctx, *f.Exchange)
+	default:
+		return a.cfg.WorkerRepo.Workers(ctx)
+	}
 }
 
 type WorkersFilter struct {
@@ -317,161 +329,67 @@ type WorkersFilter struct {
 	NodeID   *uuid.UUID
 }
 
-func (a *Application) Workers(ctx context.Context, f WorkersFilter) ([]live.Worker, error) {
-	switch {
-	case f.NodeID != nil:
-		return a.workerRepo.WorkersByNodeID(ctx, *f.NodeID)
-	case f.Exchange != nil:
-		return a.workerRepo.WorkersByExchange(ctx, *f.Exchange)
-	default:
-		return a.workerRepo.Workers(ctx)
-	}
-}
+// WorkerMetrics собирает состояние воркера из двух независимых источников.
+// Ошибка — только если воркера нет в БД. Недоступность любого из источников
+// даёт nil в соответствующем поле, а не общий отказ: контейнер может быть жив,
+// когда воркер завис, и наоборот.
+func (a *Application) WorkerMetrics(ctx context.Context, exchangeAccountID uuid.UUID) (live.WorkerMetrics, error) {
+	const op = "worker health"
 
-func (a *Application) SubscribeWorkerMetrics(ctx context.Context, exchangeAccountID uuid.UUID) (<-chan live.Metrics, error) {
-	const op = "subscribe worker metrics"
-
-	worker, err := a.workerRepo.WorkerByAccountID(ctx, exchangeAccountID)
+	worker, err := a.cfg.WorkerRepo.WorkerByAccountID(ctx, exchangeAccountID)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return live.WorkerMetrics{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	a.clientsMu.RLock()
-	dockerClient, ok := a.nodeClients[worker.NodeID]
+	dockerClient, dockerOK := a.nodeClients[worker.NodeID]
+	workerClient, workerOK := a.workerClients[exchangeAccountID]
 	a.clientsMu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("%s: node client not initialized: %w", op, errorsx.ErrInternal)
-	}
 
-	subID := uuid.New()
-	ch := make(chan live.Metrics, 16)
+	var (
+		wg             sync.WaitGroup
+		containerStats *live.ResourceUsage
+		workerStats    *live.WorkerStats
+	)
 
-	a.subsMu.Lock()
-	firstSub := len(a.metricsSubs[exchangeAccountID]) == 0
-	if a.metricsSubs[exchangeAccountID] == nil {
-		a.metricsSubs[exchangeAccountID] = make(map[uuid.UUID]chan live.Metrics)
-	}
-	a.metricsSubs[exchangeAccountID][subID] = ch
-	a.subsMu.Unlock()
-
-	if firstSub {
-		streamCtx, streamCancel := context.WithCancel(context.Background())
-		metricsChan, err := dockerClient.StreamWorkerMetrics(streamCtx, worker.ContainerID)
-		if err != nil {
-			streamCancel()
-			a.subsMu.Lock()
-			delete(a.metricsSubs[exchangeAccountID], subID)
-			delete(a.metricsSubs, exchangeAccountID)
-			a.subsMu.Unlock()
-			close(ch)
-			return nil, fmt.Errorf("%s: stream: %w", op, err)
-		}
-		go a.broadcastWorkerMetrics(exchangeAccountID, metricsChan, streamCancel)
-	}
-
-	go func() {
-		<-ctx.Done()
-		a.subsMu.Lock()
-		delete(a.metricsSubs[exchangeAccountID], subID)
-		if len(a.metricsSubs[exchangeAccountID]) == 0 {
-			delete(a.metricsSubs, exchangeAccountID)
-		}
-		a.subsMu.Unlock()
-		close(ch)
-	}()
-
-	return ch, nil
-}
-
-func (a *Application) SubscribeWorkerStats(ctx context.Context, accountID uuid.UUID) (<-chan live.WorkerStats, error) {
-	const op = "subscribe worker stats"
-
-	a.clientsMu.RLock()
-	client, ok := a.workerClients[accountID]
-	a.clientsMu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("%s: worker client not initialized: %w", op, errorsx.ErrInternal)
-	}
-
-	subID := uuid.New()
-	ch := make(chan live.WorkerStats, 16)
-
-	a.subsMu.Lock()
-	firstSub := len(a.statsSubs[accountID]) == 0
-	if a.statsSubs[accountID] == nil {
-		a.statsSubs[accountID] = make(map[uuid.UUID]chan live.WorkerStats)
-	}
-	a.statsSubs[accountID][subID] = ch
-	a.subsMu.Unlock()
-
-	if firstSub {
-		streamCtx, streamCancel := context.WithCancel(context.Background())
-		statsChan, err := client.StreamWorkerStats(streamCtx)
-		if err != nil {
-			streamCancel()
-			a.subsMu.Lock()
-			delete(a.statsSubs[accountID], subID)
-			delete(a.statsSubs, accountID)
-			a.subsMu.Unlock()
-			close(ch)
-			return nil, fmt.Errorf("%s: stream: %w", op, err)
-		}
-		go a.broadcastWorkerStats(accountID, statsChan, streamCancel)
-	}
-
-	go func() {
-		<-ctx.Done()
-		a.subsMu.Lock()
-		delete(a.statsSubs[accountID], subID)
-		if len(a.statsSubs[accountID]) == 0 {
-			delete(a.statsSubs, accountID)
-		}
-		a.subsMu.Unlock()
-		close(ch)
-	}()
-
-	return ch, nil
-}
-
-func (a *Application) broadcastWorkerStats(accountID uuid.UUID, statsChan <-chan live.WorkerStats, cancel context.CancelFunc) {
-	defer cancel()
-	for stats := range statsChan {
-		a.subsMu.RLock()
-		subs := a.statsSubs[accountID]
-		if len(subs) == 0 {
-			a.subsMu.RUnlock()
-			return
-		}
-		for _, ch := range subs {
-			select {
-			case ch <- stats:
-			default:
+	if dockerOK {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cstats, err := dockerClient.ContainerStats(ctx, worker.ContainerID)
+			if err != nil {
+				a.cfg.Logger.Warn("container stats unavailable", "op", op, "worker_id", worker.ID, "error", err)
+				return
 			}
-		}
-		a.subsMu.RUnlock()
+			containerStats = &cstats
+		}()
 	}
-}
 
-func (a *Application) broadcastWorkerMetrics(accountID uuid.UUID, metricsChan <-chan live.Metrics, cancel context.CancelFunc) {
-	defer cancel()
-	for metrics := range metricsChan {
-		a.subsMu.RLock()
-		subs := a.metricsSubs[accountID]
-		if len(subs) == 0 {
-			a.subsMu.RUnlock()
-			return
-		}
-		for _, ch := range subs {
-			select {
-			case ch <- metrics:
-			default:
+	if workerOK {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s, err := workerClient.WorkerStats(ctx)
+			if err != nil {
+				a.cfg.Logger.Warn("worker stats unavailable", "op", op, "worker_id", worker.ID, "error", err)
+				return
 			}
-		}
-		a.subsMu.RUnlock()
+			workerStats = &s
+		}()
 	}
+
+	wg.Wait()
+
+	return live.WorkerMetrics{
+		WorkerID:      worker.ID,
+		Status:        worker.Status,
+		WorkerStats:   workerStats,
+		ResourceUsage: containerStats,
+		At:            time.Now(),
+	}, nil
 }
 
-func (a *Application) AvailableDetectors(ctx context.Context, accountID uuid.UUID) ([]detect.DetectorMeta, error) {
+func (a *Application) AvailableDetectors(ctx context.Context, accountID uuid.UUID) ([]detector.Meta, error) {
 	const op = "available detectors"
 
 	a.clientsMu.RLock()
@@ -483,6 +401,25 @@ func (a *Application) AvailableDetectors(ctx context.Context, accountID uuid.UUI
 	a.clientsMu.RUnlock()
 
 	result, err := client.AvailableDetectors(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: client: %w", op, err)
+	}
+
+	return result, nil
+}
+
+func (a *Application) AvailableFilters(ctx context.Context, accountID uuid.UUID) ([]filter.Meta, error) {
+	const op = "available filters"
+
+	a.clientsMu.RLock()
+	client, ok := a.workerClients[accountID]
+	if !ok {
+		a.clientsMu.RUnlock()
+		return nil, fmt.Errorf("%s: worker: %w", op, errorsx.ErrNotFound)
+	}
+	a.clientsMu.RUnlock()
+
+	result, err := client.AvailableFilters(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s: client: %w", op, err)
 	}
@@ -509,7 +446,7 @@ func (a *Application) AvailableExchanges(ctx context.Context, accountID uuid.UUI
 	return result, nil
 }
 
-func (a *Application) NewRun(ctx context.Context, accountID uuid.UUID, mkt market.Spec, interval string, detector detect.DetectorConfig, callerID uuid.UUID) (live.Run, error) {
+func (a *Application) NewRun(ctx context.Context, accountID uuid.UUID, callerID uuid.UUID, req live.NewRunRequest) (live.Run, error) {
 	const op = "new run"
 
 	a.clientsMu.RLock()
@@ -520,12 +457,12 @@ func (a *Application) NewRun(ctx context.Context, accountID uuid.UUID, mkt marke
 	}
 	a.clientsMu.RUnlock()
 
-	resp, err := client.NewRun(ctx, mkt, interval, detector, callerID)
+	resp, err := client.NewRun(ctx, callerID, req)
 	if err != nil {
 		return live.Run{}, fmt.Errorf("%s: client: %w", op, err)
 	}
 
-	_ = a.marketRepo.UpsertSymbols(ctx, mkt.Exchange, mkt.Category, []string{mkt.Symbol})
+	_ = a.cfg.MarketRepo.UpsertSymbols(ctx, req.MarketSpec.Exchange, req.MarketSpec.Category, []string{req.MarketSpec.Symbol})
 
 	return resp, nil
 }
@@ -596,7 +533,7 @@ func (a *Application) Run(ctx context.Context, accountID uuid.UUID, runID uuid.U
 	}
 	a.clientsMu.RUnlock()
 
-	resp, err := client.GetRun(ctx, runID)
+	resp, err := client.RunByID(ctx, runID)
 	if err != nil {
 		return live.Run{}, fmt.Errorf("%s: client: %w", op, err)
 	}
@@ -667,12 +604,11 @@ func (a *Application) failWorker(workerID uuid.UUID, op string, deployErr error)
 
 	var deployErrStr *string
 	if deployErr != nil {
-		s := deployErr.Error()
-		deployErrStr = &s
+		deployErrStr = new(deployErr.Error())
 	}
 
-	if err := a.workerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, deployErrStr); err != nil {
-		a.logger.Error("failed to update worker status",
+	if err := a.cfg.WorkerRepo.UpdateWorkerStatusByID(failCtx, workerID, live.WorkerStatusFailed, deployErrStr); err != nil {
+		a.cfg.Logger.Error("failed to update worker status",
 			"op", op,
 			"repo_error", err.Error(),
 			"deploy_error", deployErr,

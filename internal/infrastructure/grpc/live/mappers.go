@@ -1,14 +1,14 @@
 package live
 
 import (
+	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	livepb "github.com/pulsoats/contracts/gen/go/live/v1"
 	"github.com/pulsoats/core/detect"
 	"github.com/pulsoats/core/errorsx"
-	"github.com/pulsoats/core/market"
+	"github.com/pulsoats/core/xgrpc"
 	"github.com/pulsoats/main/internal/domain/live"
 	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
 )
@@ -16,7 +16,7 @@ import (
 func runFromProto(pb *livepb.Run) (live.Run, error) {
 	const op = "run from proto"
 	if pb == nil {
-		return live.Run{}, fmt.Errorf("%s: nil pb: %w", op, errorsx.ErrInternal)
+		return live.Run{}, fmt.Errorf("%s: message is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	baseRun, err := core.BaseRunFromProto(pb.BaseRun)
@@ -24,32 +24,22 @@ func runFromProto(pb *livepb.Run) (live.Run, error) {
 		return live.Run{}, err
 	}
 
-	var finishedAt *time.Time
-	if pb.FinishedAt != nil {
-		t := pb.FinishedAt.AsTime()
-		finishedAt = &t
+	finishedBy, err := xgrpc.UUIDPtrFromProto(op, "finished_by", pb.FinishedBy)
+	if err != nil {
+		return live.Run{}, err
 	}
 
-	var finishedBy *uuid.UUID
-	if pb.FinishedBy != nil {
-		id, err := uuid.Parse(*pb.FinishedBy)
-		if err != nil {
-			return live.Run{}, fmt.Errorf("%s: invalid finished_by id: %w", op, errorsx.ErrInternal)
-		}
-		finishedBy = &id
-	}
 	return live.Run{
-		Base:         baseRun,
-		SumProfitPPM: pb.SumProfitPpm,
-		FinishedAt:   finishedAt,
-		FinishedBy:   finishedBy,
+		Base:       baseRun,
+		FinishedAt: xgrpc.TimePtrFromProto(pb.FinishedAt),
+		FinishedBy: finishedBy,
 	}, nil
 }
 
 func signalFromProto(pb *livepb.Signal) (live.EnrichedSignal, error) {
 	const op = "signal from proto"
 	if pb == nil {
-		return live.EnrichedSignal{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
+		return live.EnrichedSignal{}, fmt.Errorf("%s: message is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	id, err := uuid.Parse(pb.Id)
@@ -62,14 +52,9 @@ func signalFromProto(pb *livepb.Signal) (live.EnrichedSignal, error) {
 		return live.EnrichedSignal{}, fmt.Errorf("%s: invalid run_id: %w", op, errorsx.ErrInternal)
 	}
 
-	marketSpec, ok := core.MarketSpecFromProto(pb.Market)
-	if !ok {
-		return live.EnrichedSignal{}, fmt.Errorf("%s: marketSpec is nil: %w", op, errorsx.ErrInternal)
-	}
-
-	interval, ok := market.ParseInterval(pb.Interval)
-	if !ok {
-		return live.EnrichedSignal{}, fmt.Errorf("%s: unexpected interval: %w", op, errorsx.ErrInternal)
+	marketSpec, err := xgrpc.MarketSpecFromProto(pb.Market)
+	if err != nil {
+		return live.EnrichedSignal{}, fmt.Errorf("%s: %s: %w", op, err, errorsx.ErrInternal)
 	}
 
 	if pb.CandleTime == nil {
@@ -84,49 +69,41 @@ func signalFromProto(pb *livepb.Signal) (live.EnrichedSignal, error) {
 		Signal: detect.Signal{
 			ID:                id,
 			RunID:             runID,
-			DetectorCode:      pb.DetectorCode,
-			DetectorVersion:   pb.DetectorVersion,
-			DetectorOptsLabel: pb.DetectorOptsLabel,
 			CandleTime:        pb.CandleTime.AsTime(),
-			CandleValue:       pb.CandleValue,
 			BuyValue:          pb.BuyValue,
 			TakeProfitValue:   pb.TakeProfitValue,
 			StopLossValue:     pb.StopLossValue,
 			ExpectedReturnPPM: pb.ExpectedReturnPpm,
 			CreatedAt:         pb.CreatedAt.AsTime(),
 		},
-		Market:   marketSpec,
-		Interval: interval,
+		Market:          marketSpec,
+		Interval:        pb.Interval,
+		DetectorCode:    pb.DetectorCode,
+		DetectorVersion: pb.DetectorVersion,
 	}, nil
 }
 
 func eventFromProto(pb *livepb.Event) (live.Event, error) {
 	const op = "event from proto"
 	if pb == nil {
-		return live.Event{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
+		return live.Event{}, fmt.Errorf("%s: message is nil: %w", op, errorsx.ErrInternal)
 	}
 
-	runID, err := uuid.Parse(pb.RunId)
-	if err != nil {
-		return live.Event{}, fmt.Errorf("%s: invalid run_id: %w", op, errorsx.ErrInternal)
-	}
-	switch p := pb.Payload.(type) {
-	case *livepb.Event_Run:
-		r, err := runFromProto(p.Run)
+	switch v := pb.Payload.(type) {
+	case *livepb.Event_RunStatus:
+		event, err := runStatusEventFromProto(v)
 		if err != nil {
 			return live.Event{}, fmt.Errorf("%s: %w", op, err)
 		}
 		return live.Event{
-			RunID:   runID,
-			Payload: live.RunEvent{Run: r},
+			Payload: event,
 		}, nil
 	case *livepb.Event_Signal:
-		s, err := signalFromProto(p.Signal)
+		s, err := signalFromProto(v.Signal)
 		if err != nil {
 			return live.Event{}, fmt.Errorf("%s: %w", op, err)
 		}
 		return live.Event{
-			RunID:   runID,
 			Payload: live.SignalEvent{Signal: s},
 		}, nil
 	default:
@@ -152,21 +129,15 @@ func runsFilterToProto(f *live.RunsFilter) *livepb.ListRunsFilter {
 		Statuses:      statuses,
 		MinSignals:    f.MinSignals,
 		MaxSignals:    f.MaxSignals,
-		CreatedFrom:   core.TimePtrToProto(f.CreatedFrom),
-		CreatedTo:     core.TimePtrToProto(f.CreatedTo),
+		CreatedFrom:   xgrpc.TimePtrToProto(f.CreatedFrom),
+		CreatedTo:     xgrpc.TimePtrToProto(f.CreatedTo),
 	}
 }
 
 func runsPagedRequestToProto(req live.RunsPagedRequest) *livepb.ListRunsPagedRequest {
 	return &livepb.ListRunsPagedRequest{
-		Limit: req.Limit,
-		BeforeId: func() *string {
-			if req.BeforeID != nil {
-				s := req.BeforeID.String()
-				return &s
-			}
-			return nil
-		}(),
+		Limit:       req.Limit,
+		BeforeId:    xgrpc.UUIDPtrToProto(req.BeforeID),
 		OrderDirAsc: req.OrderDirAsc,
 		Filter:      runsFilterToProto(req.Filter),
 	}
@@ -208,41 +179,29 @@ func signalsFilterToProto(f *live.SignalsFilter) *livepb.ListSignalsFilter {
 		return nil
 	}
 
-	var runIDStr *string
-	if f.RunID != nil {
-		s := f.RunID.String()
-		runIDStr = &s
-	}
-
 	return &livepb.ListSignalsFilter{
-		RunId:         runIDStr,
-		Categories:    f.Categories,
-		Symbols:       f.Symbols,
-		Intervals:     f.Intervals,
-		DetectorCodes: f.DetectorCodes,
-		CreatedFrom:   core.TimePtrToProto(f.CreatedFrom),
-		CreatedTo:     core.TimePtrToProto(f.CreatedTo),
+		RunId:          xgrpc.UUIDPtrToProto(f.RunID),
+		Categories:     f.Categories,
+		Symbols:        f.Symbols,
+		Intervals:      f.Intervals,
+		DetectorsCodes: f.DetectorCodes,
+		CreatedFrom:    xgrpc.TimePtrToProto(f.CreatedFrom),
+		CreatedTo:      xgrpc.TimePtrToProto(f.CreatedTo),
 	}
 }
 
 func signalsPagedRequestToProto(req live.SignalsPagedRequest) *livepb.ListSignalsPagedRequest {
 	return &livepb.ListSignalsPagedRequest{
-		Limit: req.Limit,
-		BeforeId: func() *string {
-			if req.BeforeID != nil {
-				s := req.BeforeID.String()
-				return &s
-			}
-			return nil
-		}(),
-		Filter: signalsFilterToProto(req.Filter),
+		Limit:    req.Limit,
+		BeforeId: xgrpc.UUIDPtrToProto(req.BeforeID),
+		Filter:   signalsFilterToProto(req.Filter),
 	}
 }
 
 func signalsPagedResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.SignalsPagedResponse, error) {
 	const op = "signals paged response from proto"
 	if pb == nil {
-		return live.SignalsPagedResponse{}, fmt.Errorf("%s: pb is nil: %w", op, errorsx.ErrInternal)
+		return live.SignalsPagedResponse{}, fmt.Errorf("%s: message is nil: %w", op, errorsx.ErrInternal)
 	}
 
 	signals := make([]live.EnrichedSignal, 0, len(pb.Signals))
@@ -267,5 +226,27 @@ func signalsPagedResponseFromProto(pb *livepb.ListSignalsPagedResponse) (live.Si
 		Signals:      signals,
 		HasMore:      pb.HasMore,
 		NextBeforeID: nextBeforeID,
+	}, nil
+}
+
+func runStatusEventFromProto(pb *livepb.Event_RunStatus) (live.RunStatusEvent, error) {
+	const op = "run status event from proto"
+	if pb == nil {
+		return live.RunStatusEvent{}, fmt.Errorf("%s: message is nil: %w", op, errorsx.ErrInternal)
+	}
+
+	id, err := uuid.Parse(pb.RunStatus.RunId)
+	if err != nil {
+		return live.RunStatusEvent{}, fmt.Errorf("%s: %w", errors.Join(errorsx.ErrInternal, err))
+	}
+
+	status, err := core.RunStatusFromProto(pb.RunStatus.Status)
+	if err != nil {
+		return live.RunStatusEvent{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return live.RunStatusEvent{
+		RunID:  id,
+		Status: status,
 	}, nil
 }

@@ -16,13 +16,12 @@ import (
 )
 
 func (h *Handler) CreateWorker(c *gin.Context) {
-	exchangeAccountID, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		errhttp.RespondError(c, errorsx.ErrInvalidArgument)
+	accountID, ok := h.resolveAccountID(c)
+	if !ok {
 		return
 	}
 
-	worker, err := h.app.CreateWorker(c.Request.Context(), exchangeAccountID)
+	worker, err := h.app.CreateWorker(c.Request.Context(), accountID)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -127,49 +126,19 @@ func (h *Handler) Workers(c *gin.Context) {
 	c.JSON(http.StatusOK, workersToResponse(workers))
 }
 
-func (h *Handler) StreamWorkerMetrics(c *gin.Context) {
+func (h *Handler) WorkerMetrics(c *gin.Context) {
 	accountID, ok := h.resolveAccountID(c)
 	if !ok {
 		return
 	}
 
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		errhttp.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	ch, err := h.app.SubscribeWorkerMetrics(ctx, accountID)
+	metrics, err := h.app.WorkerMetrics(c.Request.Context(), accountID)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case metrics, open := <-ch:
-			if !open {
-				fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
-				flusher.Flush()
-				return
-			}
-			data, err := json.Marshal(metrics)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(c.Writer, "event: metrics\ndata: %s\n\n", data)
-			flusher.Flush()
-		}
-	}
+	c.JSON(http.StatusOK, workerMetricsToResponse(metrics))
 }
 
 func (h *Handler) AvailableExchanges(c *gin.Context) {
@@ -202,6 +171,21 @@ func (h *Handler) AvailableDetectors(c *gin.Context) {
 	c.JSON(http.StatusOK, core.AvailableDetectorsToResponse(detectors))
 }
 
+func (h *Handler) AvailableFilters(c *gin.Context) {
+	accountID, ok := h.resolveAccountID(c)
+	if !ok {
+		return
+	}
+
+	filters, err := h.app.AvailableFilters(c.Request.Context(), accountID)
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.AvailableFiltersToResponse(filters))
+}
+
 func (h *Handler) NewRun(c *gin.Context) {
 	accountID, ok := h.resolveAccountID(c)
 	if !ok {
@@ -220,12 +204,7 @@ func (h *Handler) NewRun(c *gin.Context) {
 		return
 	}
 
-	run, err := h.app.NewRun(c.Request.Context(), accountID,
-		core.MarketSpecFromRequest(req.Market),
-		req.Interval,
-		core.DetectorConfigFromRequest(req.Detector),
-		callerID,
-	)
+	run, err := h.app.NewRun(c.Request.Context(), accountID, callerID, newRunFromRequest(req))
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -343,7 +322,7 @@ func (h *Handler) RunsPaged(c *gin.Context) {
 		req.Limit = 20
 	}
 
-	domainReq, err := runsPagedRequestFromDTO(req)
+	domainReq, err := runsPagedFromRequest(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -370,7 +349,7 @@ func (h *Handler) SignalsPaged(c *gin.Context) {
 		return
 	}
 
-	domainReq, err := signalsPagedRequestFromDTO(req)
+	domainReq, err := signalsPagedFromRequest(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -426,9 +405,9 @@ func (h *Handler) StreamEvents(c *gin.Context) {
 			var payload any
 
 			switch p := event.Payload.(type) {
-			case domainlive.RunEvent:
+			case domainlive.RunStatusEvent:
 				eventType = "run"
-				payload = runToResponse(p.Run)
+				payload = runStatusEventToResponse(p)
 			case domainlive.SignalEvent:
 				eventType = "signal"
 				payload = signalToResponse(p.Signal)
@@ -441,50 +420,6 @@ func (h *Handler) StreamEvents(c *gin.Context) {
 				continue
 			}
 			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, data)
-			flusher.Flush()
-		}
-	}
-}
-
-func (h *Handler) StreamWorkerStats(c *gin.Context) {
-	accountID, ok := h.resolveAccountID(c)
-	if !ok {
-		return
-	}
-
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		errhttp.RespondError(c, fmt.Errorf("%w: streaming not supported", errorsx.ErrInternal))
-		return
-	}
-
-	statsCh, err := h.app.SubscribeWorkerStats(c.Request.Context(), accountID)
-	if err != nil {
-		errhttp.RespondError(c, err)
-		return
-	}
-
-	ctx := c.Request.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case stats, open := <-statsCh:
-			if !open {
-				fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
-				flusher.Flush()
-				return
-			}
-			data, err := json.Marshal(workerStatsToResponse(stats))
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(c.Writer, "event: stats\ndata: %s\n\n", data)
 			flusher.Flush()
 		}
 	}

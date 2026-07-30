@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/google/uuid"
-	"github.com/pulsoats/core/detect"
-	"github.com/pulsoats/core/errorsx"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/main/internal/domain/analysis"
 	"github.com/pulsoats/main/internal/domain/market"
@@ -30,9 +29,6 @@ func NewApplication(client *grpcanalysis.Client, marketRepo market.Repository) (
 
 func (a *Application) NewRun(ctx context.Context, userID uuid.UUID, req analysis.NewRunRequest) (analysis.Run, error) {
 	const op = "new run"
-	if err := validateNewRunRequest(req); err != nil {
-		return analysis.Run{}, err
-	}
 
 	resp, err := a.client.NewRun(ctx, userID, req)
 	if err != nil {
@@ -82,9 +78,18 @@ func (a *Application) AvailableExchanges(ctx context.Context) ([]exchange.Meta, 
 	return resp, nil
 }
 
-func (a *Application) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+func (a *Application) AvailableDetectors(ctx context.Context) ([]detector.Meta, error) {
 	const op = "available detectors"
 	resp, err := a.client.AvailableDetectors(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return resp, nil
+}
+
+func (a *Application) AvailableFilters(ctx context.Context) ([]filter.Meta, error) {
+	const op = "available filters"
+	resp, err := a.client.AvailableFilters(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -97,26 +102,4 @@ func (a *Application) RunsPaged(ctx context.Context, userID uuid.UUID, req analy
 		return analysis.RunsPagedResponse{}, fmt.Errorf("runs paged: client: %w", err)
 	}
 	return resp, nil
-}
-
-func validateNewRunRequest(req analysis.NewRunRequest) error {
-	if strings.TrimSpace(req.Market.Exchange) == "" {
-		return fmt.Errorf("market.exchange: %w", errorsx.ErrInvalidArgument)
-	}
-	if strings.TrimSpace(req.Market.Category) == "" {
-		return fmt.Errorf("market.category: %w", errorsx.ErrInvalidArgument)
-	}
-	if strings.TrimSpace(req.Market.Symbol) == "" {
-		return fmt.Errorf("market.symbol: %w", errorsx.ErrInvalidArgument)
-	}
-	if strings.TrimSpace(req.Interval) == "" {
-		return fmt.Errorf("interval: %w", errorsx.ErrInvalidArgument)
-	}
-	if strings.TrimSpace(req.Detector.Code) == "" {
-		return fmt.Errorf("detector.code: %w", errorsx.ErrInvalidArgument)
-	}
-	if req.From.IsZero() || req.To.IsZero() {
-		return fmt.Errorf("from/to: %w", errorsx.ErrInvalidArgument)
-	}
-	return nil
 }

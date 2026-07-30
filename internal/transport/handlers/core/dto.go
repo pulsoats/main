@@ -34,7 +34,6 @@ type DetectorConfigResponse struct {
 
 type DetectorMetaResponse struct {
 	Code        string          `json:"code"`
-	Kind        string          `json:"kind"`
 	Version     string          `json:"version"`
 	Description string          `json:"description"`
 	OptsSchema  json.RawMessage `json:"optsSchema"`
@@ -42,6 +41,25 @@ type DetectorMetaResponse struct {
 
 type AvailableDetectorsResponse struct {
 	Detectors []DetectorMetaResponse `json:"detectors"`
+}
+
+type FilterConfigRequest struct {
+	Code   string `json:"code" binding:"required"`
+	Period int    `json:"period"`
+}
+
+type FilterConfigResponse struct {
+	Code   string `json:"code"`
+	Period int    `json:"period"`
+}
+
+type FilterMetaResponse struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
+}
+
+type AvailableFiltersResponse struct {
+	Filters []FilterMetaResponse `json:"filters"`
 }
 
 type ExchangeMetaResponse struct {
@@ -52,18 +70,6 @@ type ExchangeMetaResponse struct {
 
 type AvailableExchangesResponse struct {
 	Exchanges []ExchangeMetaResponse `json:"exchanges"`
-}
-
-type ServiceInfoResponse struct {
-	ID         uuid.UUID `json:"id"`
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-	Exchange   string `json:"exchange"`
-	Account    string `json:"account"`
-	Version    string `json:"version"`
-	Addr       string `json:"addr,omitempty"`
-	LastSeenAt string `json:"lastSeenAt,omitempty"`
-	CreatedAt  string `json:"createdAt,omitempty"`
 }
 
 type RunStatusResponse struct {
@@ -78,7 +84,8 @@ type BaseRunResponse struct {
 	Interval        string                 `json:"interval"`
 	FirstCandleTime string                 `json:"firstCandleTime"` // RFC3339
 	LastCandleTime  string                 `json:"lastCandleTime"`  // RFC3339
-	Detector        DetectorConfigResponse `json:"detector"`
+	DetectorConfig  DetectorConfigResponse `json:"detectorConfig"`
+	FiltersConfigs  []FilterConfigResponse `json:"filtersConfigs"`
 	SignalsCount    int                    `json:"signalsCount"`
 	CreatedBy       string                 `json:"createdBy"`
 	CreatedAt       string                 `json:"createdAt"`

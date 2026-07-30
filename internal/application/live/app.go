@@ -21,30 +21,18 @@ type certGenerator interface {
 }
 
 type Application struct {
-	accountRepo live.ExchangeAccountRepository
-	nodeRepo    live.NodeRepository
-	workerRepo  live.WorkerRepository
-	marketRepo  domainmarket.Repository
-
-	grpcCACert          string
-	certgen             certGenerator
-	dockerFactory       *docker.ClientFactory
-	workerClientFactory *grpclive.ClientFactory
+	cfg Config
 
 	clientsMu     sync.RWMutex
 	nodeClients   map[uuid.UUID]*docker.Client
 	workerClients map[uuid.UUID]*grpclive.Client // accountID -> live.Client
 
-	subsMu      sync.RWMutex                                      // metricsSubs, eventSubs
-	metricsSubs map[uuid.UUID]map[uuid.UUID]chan live.Metrics     // accountID -> [subscriberID -> chan]
-	statsSubs   map[uuid.UUID]map[uuid.UUID]chan live.WorkerStats // accountID -> [subscriberID -> chan]
-
-	appName     string
-	emailSender mailer.Sender
-	logger      *slog.Logger
+	subsMu      sync.RWMutex                                        // metricsSubs, eventSubs
+	metricsSubs map[uuid.UUID]map[uuid.UUID]chan live.WorkerMetrics // accountID -> [subscriberID -> chan]
+	statsSubs   map[uuid.UUID]map[uuid.UUID]chan live.WorkerStats   // accountID -> [subscriberID -> chan]
 }
 
-type ApplicationConfig struct {
+type Config struct {
 	AccountRepo live.ExchangeAccountRepository
 	NodeRepo    live.NodeRepository
 	WorkerRepo  live.WorkerRepository
@@ -60,7 +48,7 @@ type ApplicationConfig struct {
 	Logger      *slog.Logger
 }
 
-func NewApplication(cfg ApplicationConfig) (*Application, error) {
+func NewApplication(cfg Config) (*Application, error) {
 	if cfg.AccountRepo == nil {
 		return nil, errors.New("live app: account repository is nil")
 	}
@@ -91,29 +79,17 @@ func NewApplication(cfg ApplicationConfig) (*Application, error) {
 		return nil, errors.New("live app: worker repository is nil")
 	}
 
-	logger := slog.Default()
-	if cfg.Logger != nil {
-		logger = cfg.Logger
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
 	}
-	return &Application{
-		accountRepo: cfg.AccountRepo,
-		nodeRepo:    cfg.NodeRepo,
-		workerRepo:  cfg.WorkerRepo,
-		marketRepo:  cfg.MarketRepo,
 
-		grpcCACert:          cfg.GRPCCACert,
-		certgen:             cfg.CertGenerator,
-		dockerFactory:       cfg.DockerClientFactory,
-		workerClientFactory: cfg.WorkerClientFactory,
+	return &Application{
+		cfg: cfg,
 
 		nodeClients:   make(map[uuid.UUID]*docker.Client),
 		workerClients: make(map[uuid.UUID]*grpclive.Client),
 
-		metricsSubs: make(map[uuid.UUID]map[uuid.UUID]chan live.Metrics),
+		metricsSubs: make(map[uuid.UUID]map[uuid.UUID]chan live.WorkerMetrics),
 		statsSubs:   make(map[uuid.UUID]map[uuid.UUID]chan live.WorkerStats),
-
-		emailSender: cfg.EmailSender,
-		appName:     cfg.AppName,
-		logger:      logger,
 	}, nil
 }

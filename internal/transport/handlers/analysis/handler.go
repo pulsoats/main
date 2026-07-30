@@ -105,7 +105,7 @@ func (h *Handler) RunsPaged(c *gin.Context) {
 		return
 	}
 
-	reqFromDTO, err := runsPagedRequestFromDTO(req)
+	reqFromDTO, err := runsPagedRequestFromRequest(req)
 	if err != nil {
 		errhttp.RespondError(c, err)
 		return
@@ -260,4 +260,14 @@ func (h *Handler) AvailableDetectors(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, core.AvailableDetectorsToResponse(exchanges))
+}
+
+func (h *Handler) AvailableFilters(c *gin.Context) {
+	filters, err := h.app.AvailableFilters(c.Request.Context())
+	if err != nil {
+		errhttp.RespondError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, core.AvailableFiltersToResponse(filters))
 }

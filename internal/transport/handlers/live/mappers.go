@@ -78,30 +78,55 @@ func workersToResponse(workers []live.Worker) workersResponse {
 	return workersResponse{Workers: res}
 }
 
-func workerStatsToResponse(s live.WorkerStats) workerStatsResponse {
-	return workerStatsResponse{
-		RunsTotal:    s.RunsTotal,
-		SignalsTotal: s.SignalsTotal,
+func workerMetricsToResponse(s live.WorkerMetrics) workerMetricsResponse {
+	var workerStatsResp *workerStatsResponse
+	if s.WorkerStats != nil {
+		workerStatsResp = new(workerStatsResponse{
+			ActiveRuns:   s.WorkerStats.ActiveRuns,
+			SignalsTotal: s.WorkerStats.SignalsTotal,
+		})
+	}
+
+	var resourceUsageResp *resourceUsageResponse
+	if s.ResourceUsage != nil {
+		resourceUsageResp = new(resourceUsageResponse{
+			ContainerID: s.ResourceUsage.ContainerID,
+			CPUPercent:  s.ResourceUsage.CPUPercent,
+			MemoryBytes: s.ResourceUsage.MemoryBytes,
+		})
+	}
+	return workerMetricsResponse{
+		WorkerID:      s.WorkerID,
+		Status:        string(s.Status),
+		WorkerStats:   workerStatsResp,
+		ResourceUsage: resourceUsageResp,
+		At:            s.At.Format(time.RFC3339),
+	}
+}
+
+func newRunFromRequest(req newRunRequest) live.NewRunRequest {
+	return live.NewRunRequest{
+		MarketSpec:     core.MarketSpecFromRequest(req.Market),
+		Interval:       req.Interval,
+		DetectorConfig: core.DetectorConfigFromRequest(req.DetectorConfig),
+		FiltersConfigs: core.FiltersConfigsFromRequest(req.FiltersConfigs),
 	}
 }
 
 func runToResponse(r live.Run) runResponse {
 	resp := runResponse{
 		BaseRunResponse: core.BaseRunToResponse(r.Base),
-		SumProfitPct:    core.PPMToPercent(r.SumProfitPPM),
 	}
 	if r.FinishedAt != nil {
-		s := r.FinishedAt.Format(time.RFC3339)
-		resp.FinishedAt = &s
+		resp.FinishedAt = new(r.FinishedAt.Format(time.RFC3339))
 	}
 	if r.FinishedBy != nil {
-		s := r.FinishedBy.String()
-		resp.FinishedBy = &s
+		resp.FinishedBy = new(r.FinishedBy.String())
 	}
 	return resp
 }
 
-func runsPagedRequestFromDTO(req runsPagedRequest) (live.RunsPagedRequest, error) {
+func runsPagedFromRequest(req runsPagedRequest) (live.RunsPagedRequest, error) {
 	var beforeID *uuid.UUID
 	if req.BeforeID != "" {
 		id, err := uuid.Parse(req.BeforeID)
@@ -147,25 +172,31 @@ func runsPagedToResponse(resp live.RunsPagedResponse) runsPagedResponse {
 	}
 }
 
+func runStatusEventToResponse(event live.RunStatusEvent) runStatusEventResponse {
+	return runStatusEventResponse{
+		RunID:  event.RunID,
+		Status: core.RunStatusToResponse(event.Status),
+	}
+}
+
 func signalToResponse(s live.EnrichedSignal) signalResponse {
 	return signalResponse{
 		ID:                s.ID,
 		RunID:             s.RunID,
 		Market:            core.MarketSpecToResponse(s.Market),
+		Interval:          s.Interval,
 		DetectorCode:      s.DetectorCode,
 		DetectorVersion:   s.DetectorVersion,
-		DetectorOptsLabel: s.DetectorOptsLabel,
-		CandleTime:        s.CandleTime.Unix(),
-		CandleValue:       s.CandleValue,
+		CandleTime:        s.CandleTime.Format(time.RFC3339),
 		BuyValue:          s.BuyValue,
 		TakeProfitValue:   s.TakeProfitValue,
 		StopLossValue:     s.StopLossValue,
 		ExpectedReturnPct: core.PPMToPercent(s.ExpectedReturnPPM),
-		CreatedAt:         s.CreatedAt.Unix(),
+		CreatedAt:         s.CreatedAt.Format(time.RFC3339),
 	}
 }
 
-func signalsPagedRequestFromDTO(req signalsPagedRequest) (live.SignalsPagedRequest, error) {
+func signalsPagedFromRequest(req signalsPagedRequest) (live.SignalsPagedRequest, error) {
 	const op = "signals paged request from dto"
 
 	if req.Limit <= 0 {

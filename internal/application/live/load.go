@@ -14,7 +14,7 @@ import (
 func (a *Application) LoadFromDB(ctx context.Context) []error {
 	var errs []error
 
-	nodes, err := a.nodeRepo.Nodes(ctx)
+	nodes, err := a.cfg.NodeRepo.Nodes(ctx)
 	if err != nil {
 		return []error{fmt.Errorf("load from db: nodes: %w", err)}
 	}
@@ -26,7 +26,7 @@ func (a *Application) LoadFromDB(ctx context.Context) []error {
 			continue
 		}
 		addr := "tcp://" + net.JoinHostPort(node.Host, strconv.Itoa(node.DockerPort))
-		client, err := a.dockerFactory.NewClient(addr)
+		client, err := a.cfg.DockerClientFactory.NewClient(addr)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("load from db: node %s: docker client: %w", node.ID, err))
 			continue
@@ -34,7 +34,7 @@ func (a *Application) LoadFromDB(ctx context.Context) []error {
 		a.nodeClients[node.ID] = client
 	}
 
-	workers, err := a.workerRepo.Workers(ctx)
+	workers, err := a.cfg.WorkerRepo.Workers(ctx)
 	if err != nil {
 		return append(errs, fmt.Errorf("load from db: workers: %w", err))
 	}
@@ -44,7 +44,7 @@ func (a *Application) LoadFromDB(ctx context.Context) []error {
 			continue
 		}
 		addr := net.JoinHostPort(worker.Host, strconv.Itoa(worker.GRPCPort))
-		client, err := a.workerClientFactory.NewClient(addr)
+		client, err := a.cfg.WorkerClientFactory.NewClient(addr)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("load from db: worker %s: grpc client: %w", worker.ID, err))
 			continue

@@ -3,7 +3,8 @@ package core
 import (
 	"time"
 
-	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/exchange"
 	"github.com/pulsoats/core/market"
 	"github.com/pulsoats/core/run"
@@ -25,8 +26,8 @@ func MarketSpecToResponse(spec market.Spec) MarketSpecResponse {
 	}
 }
 
-func DetectorConfigFromRequest(req DetectorConfigRequest) detect.DetectorConfig {
-	return detect.DetectorConfig{
+func DetectorConfigFromRequest(req DetectorConfigRequest) detector.Config {
+	return detector.Config{
 		Code:      req.Code,
 		Version:   req.Version,
 		OptsLabel: req.OptsLabel,
@@ -34,31 +35,70 @@ func DetectorConfigFromRequest(req DetectorConfigRequest) detect.DetectorConfig 
 	}
 }
 
-func DetectorConfigToResponse(cfg detect.DetectorConfig) DetectorConfigResponse {
+func DetectorConfigToResponse(dc detector.Config) DetectorConfigResponse {
 	return DetectorConfigResponse{
-		Code:      cfg.Code,
-		Version:   cfg.Version,
-		OptsLabel: cfg.OptsLabel,
-		Opts:      cfg.Opts,
+		Code:      dc.Code,
+		Version:   dc.Version,
+		OptsLabel: dc.OptsLabel,
+		Opts:      dc.Opts,
 	}
 }
 
-func DetectorMetaToResponse(meta detect.DetectorMeta) DetectorMetaResponse {
+func DetectorMetaToResponse(meta detector.Meta) DetectorMetaResponse {
 	return DetectorMetaResponse{
 		Code:        meta.Code,
-		Kind:        string(meta.Kind),
 		Version:     meta.Version,
 		Description: meta.Description,
 		OptsSchema:  meta.OptsSchema,
 	}
 }
 
-func AvailableDetectorsToResponse(detectors []detect.DetectorMeta) AvailableDetectorsResponse {
+func AvailableDetectorsToResponse(detectors []detector.Meta) AvailableDetectorsResponse {
 	res := make([]DetectorMetaResponse, 0, len(detectors))
 	for _, d := range detectors {
 		res = append(res, DetectorMetaToResponse(d))
 	}
 	return AvailableDetectorsResponse{Detectors: res}
+}
+
+func FilterConfigFromRequest(req FilterConfigRequest) filter.Config {
+	return filter.Config{
+		Code:   req.Code,
+		Period: req.Period,
+	}
+}
+
+func FilterConfigToResponse(fc filter.Config) FilterConfigResponse {
+	return FilterConfigResponse{
+		Code:   fc.Code,
+		Period: fc.Period,
+	}
+}
+
+func FiltersConfigsFromRequest(req []FilterConfigRequest) []filter.Config {
+	out := make([]filter.Config, 0, len(req))
+	for _, fc := range req {
+		out = append(out, FilterConfigFromRequest(fc))
+	}
+	return out
+}
+
+func FiltersConfigsToResponse(cfgs []filter.Config) []FilterConfigResponse {
+	out := make([]FilterConfigResponse, 0, len(cfgs))
+	for _, fc := range cfgs {
+		out = append(out, FilterConfigToResponse(fc))
+	}
+	return out
+}
+
+func AvailableFiltersToResponse(filters []filter.Meta) AvailableFiltersResponse {
+	out := make([]FilterMetaResponse, 0, len(filters))
+	for _, m := range filters {
+		out = append(out, FilterMetaResponse{Code: m.Code, Description: m.Description})
+	}
+	return AvailableFiltersResponse{
+		Filters: out,
+	}
 }
 
 func RunStatusToResponse(status run.Status) RunStatusResponse {
@@ -86,14 +126,15 @@ func AvailableExchangesToResponse(exchanges []exchange.Meta) AvailableExchangesR
 
 func BaseRunToResponse(base run.Base) BaseRunResponse {
 	resp := BaseRunResponse{
-		ID:           base.ID,
-		Status:       RunStatusToResponse(base.Status),
-		Market:       MarketSpecToResponse(base.Market),
-		Interval:     base.Interval.String(),
-		Detector:     DetectorConfigToResponse(base.Detector),
-		SignalsCount: int(base.SignalsCount),
-		CreatedBy:    base.CreatedBy,
-		CreatedAt:    base.CreatedAt.Format(time.RFC3339),
+		ID:             base.ID,
+		Status:         RunStatusToResponse(base.Status),
+		Market:         MarketSpecToResponse(base.Market),
+		Interval:       base.Interval.String(),
+		DetectorConfig: DetectorConfigToResponse(base.DetectorConfig),
+		FiltersConfigs: FiltersConfigsToResponse(base.FiltersConfigs),
+		SignalsCount:   int(base.SignalsCount),
+		CreatedBy:      base.CreatedBy,
+		CreatedAt:      base.CreatedAt.Format(time.RFC3339),
 	}
 	if !base.FirstCandleTime.IsZero() {
 		resp.FirstCandleTime = base.FirstCandleTime.Format(time.RFC3339)

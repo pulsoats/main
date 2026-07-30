@@ -14,10 +14,11 @@ import (
 	catalogpb "github.com/pulsoats/contracts/gen/go/catalog/v1"
 	corepb "github.com/pulsoats/contracts/gen/go/core/v1"
 	livepb "github.com/pulsoats/contracts/gen/go/live/v1"
-	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/errorsx"
 	"github.com/pulsoats/core/exchange"
-	"github.com/pulsoats/core/market"
+	"github.com/pulsoats/core/xgrpc"
 	"github.com/pulsoats/main/internal/domain/live"
 	"github.com/pulsoats/main/internal/infrastructure/grpc/core"
 	"google.golang.org/grpc"
@@ -72,14 +73,20 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) NewRun(ctx context.Context, market market.Spec, interval string, detector detect.DetectorConfig, callerID uuid.UUID) (live.Run, error) {
+func (c *Client) NewRun(ctx context.Context, callerID uuid.UUID, req live.NewRunRequest) (live.Run, error) {
 	const op = "new run"
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("x-user-id", callerID.String()))
 
+	filtersConfigs := make([]*corepb.FilterConfig, 0, len(req.FiltersConfigs))
+	for _, fc := range req.FiltersConfigs {
+		filtersConfigs = append(filtersConfigs, xgrpc.FilterConfigToProto(fc))
+	}
+
 	resp, err := c.live.NewRun(ctx, &livepb.NewRunRequest{
-		Market:         core.MarketSpecToProto(market),
-		Interval:       interval,
-		DetectorConfig: core.DetectorConfigToProto(detector),
+		Market:         xgrpc.MarketSpecToProto(req.MarketSpec),
+		Interval:       req.Interval,
+		DetectorConfig: xgrpc.DetectorConfigToProto(req.DetectorConfig),
+		FiltersConfigs: filtersConfigs,
 	})
 	if err != nil {
 		return live.Run{}, core.MapError(err)
@@ -124,7 +131,7 @@ func (c *Client) RestartRun(ctx context.Context, runID uuid.UUID, callerID uuid.
 	return r, nil
 }
 
-func (c *Client) GetRun(ctx context.Context, runID uuid.UUID) (live.Run, error) {
+func (c *Client) RunByID(ctx context.Context, runID uuid.UUID) (live.Run, error) {
 	const op = "get run"
 	resp, err := c.live.GetRun(ctx, &corepb.RunID{RunId: runID.String()})
 	if err != nil {
@@ -205,20 +212,31 @@ func (c *Client) SignalsPaged(ctx context.Context, req live.SignalsPagedRequest)
 	return resp, nil
 }
 
-func (c *Client) AvailableDetectors(ctx context.Context) ([]detect.DetectorMeta, error) {
+func (c *Client) AvailableDetectors(ctx context.Context) ([]detector.Meta, error) {
 	const op = "available detectors"
 	resp, err := c.catalog.ListAvailableDetectors(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	result := make([]detect.DetectorMeta, 0, len(resp.Detectors))
-	for _, pb := range resp.Detectors {
-		meta, err := core.DetectorMetaFromProto(pb)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
-		result = append(result, meta)
+	result, err := core.AvailableDetectorsFromProto(resp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return result, nil
+}
+
+func (c *Client) AvailableFilters(ctx context.Context) ([]filter.Meta, error) {
+	const op = "available filters"
+	resp, err := c.catalog.ListAvailableFilters(ctx, new(emptypb.Empty))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
+	}
+
+	result, err := core.AvailableFiltersFromProto(resp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return result, nil
@@ -231,48 +249,24 @@ func (c *Client) AvailableExchanges(ctx context.Context) ([]exchange.Meta, error
 		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	result := make([]exchange.Meta, 0, len(resp.ExchangeMetas))
-	for _, pb := range resp.ExchangeMetas {
-		meta, err := core.ExchangeMetaFromProto(pb)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
-		result = append(result, meta)
+	result, err := core.AvailableExchangesFromProto(resp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return result, nil
 }
 
-func (c *Client) StreamWorkerStats(ctx context.Context) (<-chan live.WorkerStats, error) {
-	const op = "stream worker stats"
+func (c *Client) WorkerStats(ctx context.Context) (stats live.WorkerStats, err error) {
+	const op = "worker stats"
 
-	grpcStream, err := c.live.StreamWorkerStats(ctx, &emptypb.Empty{})
+	resp, err := c.live.GetWorkerStats(ctx, new(emptypb.Empty))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, core.MapError(err))
+		return live.WorkerStats{}, fmt.Errorf("%s: %w", op, core.MapError(err))
 	}
 
-	ch := make(chan live.WorkerStats, 64)
-
-	go func() {
-		defer close(ch)
-		for {
-			pb, err := grpcStream.Recv()
-			if err != nil {
-				if !errors.Is(err, io.EOF) && ctx.Err() == nil {
-					slog.Error(op+": recv", "error", err)
-				}
-				return
-			}
-			select {
-			case ch <- live.WorkerStats{
-				RunsTotal:    pb.RunsTotal,
-				SignalsTotal: pb.SignalsTotal,
-			}:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return ch, nil
+	return live.WorkerStats{
+		ActiveRuns:   resp.ActiveRuns,
+		SignalsTotal: resp.SignalsTotal,
+	}, nil
 }

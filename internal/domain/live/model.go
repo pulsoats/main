@@ -5,15 +5,23 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pulsoats/core/detect"
+	"github.com/pulsoats/core/detect/detector"
+	"github.com/pulsoats/core/detect/filter"
 	"github.com/pulsoats/core/market"
 	corerun "github.com/pulsoats/core/run"
 )
 
 type Run struct {
 	corerun.Base
-	SumProfitPPM int64
-	FinishedAt   *time.Time
-	FinishedBy   *uuid.UUID
+	FinishedAt *time.Time
+	FinishedBy *uuid.UUID
+}
+
+type NewRunRequest struct {
+	MarketSpec     market.Spec
+	Interval       string
+	DetectorConfig detector.Config
+	FiltersConfigs []filter.Config
 }
 
 type RunsFilter struct {
@@ -64,8 +72,10 @@ type SignalsPagedRequest struct {
 // полученными из proto-ответа live-сервиса.
 type EnrichedSignal struct {
 	detect.Signal
-	Market   market.Spec
-	Interval market.Interval
+	Market          market.Spec
+	Interval        string
+	DetectorCode    string
+	DetectorVersion string
 }
 
 type SignalsPagedResponse struct {
@@ -75,7 +85,6 @@ type SignalsPagedResponse struct {
 }
 
 type Event struct {
-	RunID   uuid.UUID
 	Payload EventPayload
 }
 
@@ -83,13 +92,14 @@ type EventPayload interface {
 	eventPayload()
 }
 
-type RunEvent struct {
-	Run Run
+type RunStatusEvent struct {
+	RunID  uuid.UUID
+	Status corerun.Status
 }
 
 type SignalEvent struct {
 	Signal EnrichedSignal
 }
 
-func (RunEvent) eventPayload()    {}
-func (SignalEvent) eventPayload() {}
+func (RunStatusEvent) eventPayload() {}
+func (SignalEvent) eventPayload()    {}
